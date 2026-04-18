@@ -1,0 +1,879 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Painel Operacional de Mídia</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="app-shell">
+    <header class="app-header">
+      <div>
+        <span class="eyebrow">Painel Operacional de Mídia</span>
+        <h1 class="app-title">Controle editorial, equipe e eventos em uma rotina só.</h1>
+        <p class="app-subtitle">Visão base para contas, calendário de conteúdo, semana operacional, voluntários e frentes de eventos.</p>
+      </div>
+      <div class="header-status" aria-label="Resumo rápido">
+        <span class="header-pill">Abril 2026</span>
+        <span class="header-pill">Base estática</span>
+      </div>
+    </header>
+
+    <nav class="tabs" aria-label="Navegação principal">
+      <button class="tab active" type="button" data-target="tab-controle">Controle</button>
+      <button class="tab" type="button" data-target="tab-conteudo">Conteúdo</button>
+      <button class="tab" type="button" data-target="tab-semana">Semana</button>
+      <button class="tab" type="button" data-target="tab-equipe">Equipe</button>
+      <button class="tab" type="button" data-target="tab-eventos">Eventos</button>
+    </nav>
+
+    <!-- Aba 1: Torre de Controle -->
+    <section id="tab-controle" class="view active" aria-labelledby="controle-title">
+      <div class="section-head">
+        <div>
+          <h2 id="controle-title" class="section-title">Torre de Controle</h2>
+          <p class="section-copy">Saúde dos perfis, responsáveis e bloqueios que impedem a cadência.</p>
+        </div>
+        <div class="actions">
+          <button class="btn btn-primary" type="button">Nova conta</button>
+        </div>
+      </div>
+
+      <div class="stat-grid" aria-label="Resumo das contas">
+        <article class="stat-card status-ativo">
+          <span class="counter-label">Ativas</span>
+          <strong class="stat-number">3</strong>
+        </article>
+        <article class="stat-card status-travado">
+          <span class="counter-label">Travadas</span>
+          <strong class="stat-number">1</strong>
+        </article>
+        <article class="stat-card status-aguardando">
+          <span class="counter-label">Pré-início</span>
+          <strong class="stat-number">2</strong>
+        </article>
+      </div>
+
+      <div id="account-list" class="account-grid">
+        <article class="account-card status-instavel" data-id="1">
+          <div class="card-top">
+            <div>
+              <h3 class="card-title">Subsede São Luiz</h3>
+              <p class="card-subtitle">@adbh_industrialsaoluiz</p>
+            </div>
+            <span class="badge status-instavel">instável</span>
+          </div>
+          <div class="account-meta-grid">
+            <div class="meta-box">
+              <span class="meta-label">Responsável</span>
+              <span class="meta-value">Daniel + Maysa</span>
+            </div>
+            <div class="meta-box">
+              <span class="meta-label">Cadência</span>
+              <span class="meta-value">Seg / Qua / Sex</span>
+            </div>
+          </div>
+          <div class="blocker">Templates Canva pendentes · Equipe incompleta</div>
+          <div class="card-actions">
+            <button class="btn" type="button">Editar</button>
+            <button class="btn btn-danger" type="button">Excluir</button>
+          </div>
+        </article>
+
+        <article class="account-card status-instavel" data-id="2">
+          <div class="card-top">
+            <div>
+              <h3 class="card-title">Plixel</h3>
+              <p class="card-subtitle">@pixel_design</p>
+            </div>
+            <span class="badge status-instavel">instável</span>
+          </div>
+          <div class="account-meta-grid">
+            <div class="meta-box">
+              <span class="meta-label">Responsável</span>
+              <span class="meta-value">Daniel</span>
+            </div>
+            <div class="meta-box">
+              <span class="meta-label">Cadência</span>
+              <span class="meta-value">A definir</span>
+            </div>
+          </div>
+          <div class="blocker">Gravação travada · Saves em zero</div>
+          <div class="card-actions">
+            <button class="btn" type="button">Editar</button>
+            <button class="btn btn-danger" type="button">Excluir</button>
+          </div>
+        </article>
+
+        <article class="account-card status-travado" data-id="3">
+          <div class="card-top">
+            <div>
+              <h3 class="card-title">Vocal Renascer</h3>
+              <p class="card-subtitle">Conjunto de Jovens</p>
+            </div>
+            <span class="badge status-travado">travado</span>
+          </div>
+          <div class="account-meta-grid">
+            <div class="meta-box">
+              <span class="meta-label">Responsável</span>
+              <span class="meta-value">Daniel</span>
+            </div>
+            <div class="meta-box">
+              <span class="meta-label">Cadência</span>
+              <span class="meta-value">Dom pós EBD</span>
+            </div>
+          </div>
+          <div class="blocker">Gravação parada · Aprovação pastoral pendente</div>
+          <div class="card-actions">
+            <button class="btn" type="button">Editar</button>
+            <button class="btn btn-danger" type="button">Excluir</button>
+          </div>
+        </article>
+
+        <article class="account-card status-estruturado" data-id="4">
+          <div class="card-top">
+            <div>
+              <h3 class="card-title">Crianças</h3>
+              <p class="card-subtitle">Depto Infantil</p>
+            </div>
+            <span class="badge status-estruturado">estruturado</span>
+          </div>
+          <div class="account-meta-grid">
+            <div class="meta-box">
+              <span class="meta-label">Responsável</span>
+              <span class="meta-value">A definir</span>
+            </div>
+            <div class="meta-box">
+              <span class="meta-label">Cadência</span>
+              <span class="meta-value">—</span>
+            </div>
+          </div>
+          <div class="blocker">Responsável não definido</div>
+          <div class="card-actions">
+            <button class="btn" type="button">Editar</button>
+            <button class="btn btn-danger" type="button">Excluir</button>
+          </div>
+        </article>
+
+        <article class="account-card status-aguardando" data-id="5">
+          <div class="card-top">
+            <div>
+              <h3 class="card-title">Irmãs</h3>
+              <p class="card-subtitle">Conjunto das Irmãs</p>
+            </div>
+            <span class="badge status-aguardando">aguardando</span>
+          </div>
+          <div class="account-meta-grid">
+            <div class="meta-box">
+              <span class="meta-label">Responsável</span>
+              <span class="meta-value">A definir</span>
+            </div>
+            <div class="meta-box">
+              <span class="meta-label">Cadência</span>
+              <span class="meta-value">—</span>
+            </div>
+          </div>
+          <div class="blocker">Reunião esta semana</div>
+          <div class="card-actions">
+            <button class="btn" type="button">Editar</button>
+            <button class="btn btn-danger" type="button">Excluir</button>
+          </div>
+        </article>
+
+        <article class="account-card status-aguardando" data-id="6">
+          <div class="card-top">
+            <div>
+              <h3 class="card-title">Adolescentes</h3>
+              <p class="card-subtitle">Depto Adolescentes</p>
+            </div>
+            <span class="badge status-aguardando">aguardando</span>
+          </div>
+          <div class="account-meta-grid">
+            <div class="meta-box">
+              <span class="meta-label">Responsável</span>
+              <span class="meta-value">A definir</span>
+            </div>
+            <div class="meta-box">
+              <span class="meta-label">Cadência</span>
+              <span class="meta-value">—</span>
+            </div>
+          </div>
+          <div class="blocker">Briefing deles pendente</div>
+          <div class="card-actions">
+            <button class="btn" type="button">Editar</button>
+            <button class="btn btn-danger" type="button">Excluir</button>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <!-- Aba 2: Conteúdo -->
+    <section id="tab-conteudo" class="view" aria-labelledby="conteudo-title">
+      <div class="section-head">
+        <div>
+          <h2 id="conteudo-title" class="section-title">Conteúdo</h2>
+          <p class="section-copy">Calendário editorial de Abril de 2026 e fila estática de posts.</p>
+        </div>
+        <div class="actions">
+          <button class="btn btn-primary" type="button">Novo post</button>
+        </div>
+      </div>
+
+      <div class="calendar-toolbar">
+        <div class="filters" aria-label="Filtros de perfil">
+          <button class="filter-chip active" type="button">Todos</button>
+          <button class="filter-chip" type="button">Subsede São Luiz</button>
+          <button class="filter-chip" type="button">Plixel</button>
+          <button class="filter-chip" type="button">Vocal Renascer</button>
+          <button class="filter-chip" type="button">Crianças</button>
+          <button class="filter-chip" type="button">Irmãs</button>
+          <button class="filter-chip" type="button">Adolescentes</button>
+        </div>
+        <div class="month-nav" aria-label="Navegação de mês">
+          <button class="icon-button" type="button" aria-label="Mês anterior">←</button>
+          <span class="header-pill">Abril 2026</span>
+          <button class="icon-button" type="button" aria-label="Próximo mês">→</button>
+        </div>
+      </div>
+
+      <div class="counter-row" aria-label="Contadores do mês">
+        <span class="badge status-rascunho">rascunho 3</span>
+        <span class="badge status-agendado">agendado 0</span>
+        <span class="badge status-em-aprovacao">em aprovação 0</span>
+        <span class="badge status-publicado">publicado 0</span>
+      </div>
+
+      <div class="calendar-panel" aria-label="Calendário editorial">
+        <div class="calendar-header">
+          <span class="day-name">Dom</span>
+          <span class="day-name">Seg</span>
+          <span class="day-name">Ter</span>
+          <span class="day-name">Qua</span>
+          <span class="day-name">Qui</span>
+          <span class="day-name">Sex</span>
+          <span class="day-name">Sáb</span>
+        </div>
+        <div id="calendar-grid" class="calendar-grid">
+          <div class="calendar-day is-muted"><span class="calendar-day-number">29</span></div>
+          <div class="calendar-day is-muted"><span class="calendar-day-number">30</span></div>
+          <div class="calendar-day is-muted"><span class="calendar-day-number">31</span></div>
+          <div class="calendar-day"><span class="calendar-day-number">1</span></div>
+          <div class="calendar-day"><span class="calendar-day-number">2</span></div>
+          <div class="calendar-day"><span class="calendar-day-number">3</span></div>
+          <div class="calendar-day"><span class="calendar-day-number">4</span></div>
+
+          <div class="calendar-day"><span class="calendar-day-number">5</span></div>
+          <div class="calendar-day"><span class="calendar-day-number">6</span></div>
+          <div class="calendar-day"><span class="calendar-day-number">7</span></div>
+          <div class="calendar-day"><span class="calendar-day-number">8</span></div>
+          <div class="calendar-day"><span class="calendar-day-number">9</span></div>
+          <div class="calendar-day"><span class="calendar-day-number">10</span></div>
+          <div class="calendar-day"><span class="calendar-day-number">11</span></div>
+
+          <div class="calendar-day is-today"><span class="calendar-day-number">12</span></div>
+          <div class="calendar-day"><span class="calendar-day-number">13</span></div>
+          <div class="calendar-day">
+            <span class="calendar-day-number">14</span>
+            <span class="post-chip profile-subsede">Agenda da semana</span>
+          </div>
+          <div class="calendar-day"><span class="calendar-day-number">15</span></div>
+          <div class="calendar-day">
+            <span class="calendar-day-number">16</span>
+            <span class="post-chip profile-subsede">Verdades que sustentam a fé #1</span>
+          </div>
+          <div class="calendar-day"><span class="calendar-day-number">17</span></div>
+          <div class="calendar-day">
+            <span class="calendar-day-number">18</span>
+            <span class="post-chip profile-plixel">POV: briefing na sexta</span>
+          </div>
+
+          <div class="calendar-day"><span class="calendar-day-number">19</span></div>
+          <div class="calendar-day"><span class="calendar-day-number">20</span></div>
+          <div class="calendar-day"><span class="calendar-day-number">21</span></div>
+          <div class="calendar-day"><span class="calendar-day-number">22</span></div>
+          <div class="calendar-day"><span class="calendar-day-number">23</span></div>
+          <div class="calendar-day"><span class="calendar-day-number">24</span></div>
+          <div class="calendar-day"><span class="calendar-day-number">25</span></div>
+
+          <div class="calendar-day"><span class="calendar-day-number">26</span></div>
+          <div class="calendar-day"><span class="calendar-day-number">27</span></div>
+          <div class="calendar-day"><span class="calendar-day-number">28</span></div>
+          <div class="calendar-day"><span class="calendar-day-number">29</span></div>
+          <div class="calendar-day"><span class="calendar-day-number">30</span></div>
+          <div class="calendar-day is-muted"><span class="calendar-day-number">1</span></div>
+          <div class="calendar-day is-muted"><span class="calendar-day-number">2</span></div>
+        </div>
+      </div>
+
+      <div class="status-filter">
+        <label class="select-label" for="post-status-filter">Filtro por status</label>
+        <select id="post-status-filter" class="select-control">
+          <option>Todos os status</option>
+          <option>Rascunho</option>
+          <option>Agendado</option>
+          <option>Em aprovação</option>
+          <option>Publicado</option>
+        </select>
+      </div>
+
+      <div id="post-list" class="post-list">
+        <article class="post-item status-rascunho" data-id="p1">
+          <div>
+            <div class="post-top">
+              <span class="badge profile-subsede">Subsede São Luiz</span>
+              <span class="badge status-rascunho">rascunho</span>
+            </div>
+            <h3 class="post-title">Agenda da semana</h3>
+            <p class="post-meta">Feed · vida da igreja · 14/04/2026 às 09:00</p>
+          </div>
+          <div class="post-details">
+            <span class="badge">Daniel</span>
+          </div>
+        </article>
+
+        <article class="post-item status-rascunho" data-id="p2">
+          <div>
+            <div class="post-top">
+              <span class="badge profile-subsede">Subsede São Luiz</span>
+              <span class="badge status-rascunho">rascunho</span>
+            </div>
+            <h3 class="post-title">Verdades que sustentam a fé #1</h3>
+            <p class="post-meta">Carrossel · ensino · 16/04/2026 às 12:00</p>
+          </div>
+          <div class="post-details">
+            <span class="badge">Daniel</span>
+          </div>
+        </article>
+
+        <article class="post-item status-rascunho" data-id="p3">
+          <div>
+            <div class="post-top">
+              <span class="badge profile-plixel">Plixel</span>
+              <span class="badge status-rascunho">rascunho</span>
+            </div>
+            <h3 class="post-title">POV: quando o briefing chega na sexta</h3>
+            <p class="post-meta">Reels · bastidor · 18/04/2026 às 18:00</p>
+          </div>
+          <div class="post-details">
+            <span class="badge">Daniel</span>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <!-- Aba 3: Esta Semana -->
+    <section id="tab-semana" class="view" aria-labelledby="semana-title">
+      <div class="section-head">
+        <div>
+          <h2 id="semana-title" class="section-title">Esta Semana</h2>
+          <p class="section-copy">Tarefas separadas por domínio operacional.</p>
+        </div>
+        <div class="actions">
+          <button class="btn btn-primary" type="button">Nova tarefa</button>
+          <button class="btn" type="button">Nova semana</button>
+        </div>
+      </div>
+
+      <div id="week-tasks" class="task-list">
+        <section class="week-domain" aria-labelledby="domain-reuniao">
+          <h3 id="domain-reuniao" class="domain-title">REUNIÃO</h3>
+          <article class="task-card" data-id="t1">
+            <input class="task-check" type="checkbox" aria-label="Concluir Reunião com as Irmãs">
+            <div class="task-content">
+              <h4 class="task-title">Reunião com as Irmãs — briefing + definir responsável</h4>
+              <span class="badge domain-reuniao">REUNIÃO</span>
+            </div>
+            <button class="icon-button" type="button" aria-label="Excluir tarefa">×</button>
+          </article>
+        </section>
+
+        <section class="week-domain" aria-labelledby="domain-equipe">
+          <h3 id="domain-equipe" class="domain-title">EQUIPE</h3>
+          <div class="task-list">
+            <article class="task-card" data-id="t2">
+              <input class="task-check" type="checkbox" aria-label="Concluir Confirmar Emanuelly">
+              <div class="task-content">
+                <h4 class="task-title">Confirmar Emanuelly — função e disponibilidade</h4>
+                <span class="badge domain-equipe">EQUIPE</span>
+              </div>
+              <button class="icon-button" type="button" aria-label="Excluir tarefa">×</button>
+            </article>
+            <article class="task-card" data-id="t3">
+              <input class="task-check" type="checkbox" aria-label="Concluir Confirmar Rayssa Vitória">
+              <div class="task-content">
+                <h4 class="task-title">Confirmar Rayssa Vitória — Canva e escala</h4>
+                <span class="badge domain-equipe">EQUIPE</span>
+              </div>
+              <button class="icon-button" type="button" aria-label="Excluir tarefa">×</button>
+            </article>
+          </div>
+        </section>
+
+        <section class="week-domain" aria-labelledby="domain-conteudo">
+          <h3 id="domain-conteudo" class="domain-title">CONTEÚDO</h3>
+          <div class="task-list">
+            <article class="task-card" data-id="t4">
+              <input class="task-check" type="checkbox" aria-label="Concluir Produzir conteúdo Subsede">
+              <div class="task-content">
+                <h4 class="task-title">Produzir conteúdo Subsede (sábado)</h4>
+                <span class="badge domain-conteudo">CONTEÚDO</span>
+              </div>
+              <button class="icon-button" type="button" aria-label="Excluir tarefa">×</button>
+            </article>
+            <article class="task-card" data-id="t5">
+              <input class="task-check" type="checkbox" aria-label="Concluir Produzir conteúdo Plixel">
+              <div class="task-content">
+                <h4 class="task-title">Produzir conteúdo Plixel (sábado)</h4>
+                <span class="badge domain-conteudo">CONTEÚDO</span>
+              </div>
+              <button class="icon-button" type="button" aria-label="Excluir tarefa">×</button>
+            </article>
+            <article class="task-card" data-id="t6">
+              <input class="task-check" type="checkbox" aria-label="Concluir Avançar templates Canva da Subsede">
+              <div class="task-content">
+                <h4 class="task-title">Avançar templates Canva da Subsede</h4>
+                <span class="badge domain-conteudo">CONTEÚDO</span>
+              </div>
+              <button class="icon-button" type="button" aria-label="Excluir tarefa">×</button>
+            </article>
+          </div>
+        </section>
+
+        <section class="week-domain" aria-labelledby="domain-culto">
+          <h3 id="domain-culto" class="domain-title">CULTO</h3>
+          <div class="task-list">
+            <article class="task-card" data-id="t7">
+              <input class="task-check" type="checkbox" aria-label="Concluir Alinhar músicas">
+              <div class="task-content">
+                <h4 class="task-title">Alinhar músicas com responsável do louvor</h4>
+                <span class="badge domain-culto">CULTO</span>
+              </div>
+              <button class="icon-button" type="button" aria-label="Excluir tarefa">×</button>
+            </article>
+            <article class="task-card" data-id="t8">
+              <input class="task-check" type="checkbox" aria-label="Concluir Definir quem grava o culto">
+              <div class="task-content">
+                <h4 class="task-title">Definir quem grava o culto de domingo</h4>
+                <span class="badge domain-culto">CULTO</span>
+              </div>
+              <button class="icon-button" type="button" aria-label="Excluir tarefa">×</button>
+            </article>
+          </div>
+        </section>
+
+        <section class="week-domain" aria-labelledby="domain-outro">
+          <h3 id="domain-outro" class="domain-title">OUTRO</h3>
+          <p class="muted">Sem tarefas neste domínio.</p>
+        </section>
+      </div>
+    </section>
+
+    <!-- Aba 4: Equipe -->
+    <section id="tab-equipe" class="view" aria-labelledby="equipe-title">
+      <div class="section-head">
+        <div>
+          <h2 id="equipe-title" class="section-title">Equipe</h2>
+          <p class="section-copy">Voluntários por disponibilidade e lacunas abertas.</p>
+        </div>
+        <div class="actions">
+          <button class="btn btn-primary" type="button">Adicionar pessoa</button>
+          <button class="btn" type="button">Adicionar lacuna</button>
+        </div>
+      </div>
+
+      <div class="stat-grid team-summary" aria-label="Resumo da equipe">
+        <article class="stat-card status-ativo">
+          <span class="counter-label">Ativos</span>
+          <strong class="stat-number">2</strong>
+        </article>
+        <article class="stat-card status-parcial">
+          <span class="counter-label">Parcial-eventual</span>
+          <strong class="stat-number">3</strong>
+        </article>
+        <article class="stat-card status-confirmar">
+          <span class="counter-label">A confirmar</span>
+          <strong class="stat-number">2</strong>
+        </article>
+      </div>
+
+      <div id="team-list" class="team-sections">
+        <section class="team-block" aria-labelledby="team-ativos">
+          <h3 id="team-ativos" class="team-block-title">Ativos</h3>
+          <div class="people-list">
+            <article class="person-card status-ativo" data-id="e1">
+              <span class="avatar status-ativo">DP</span>
+              <div class="person-info">
+                <div class="person-top">
+                  <div>
+                    <h4 class="person-name">Daniel Pires</h4>
+                    <p class="person-role">Coordenação geral · Projeção domingo · Design · Photoshop · Canva · Holyrics</p>
+                  </div>
+                  <span class="badge status-ativo">ativo</span>
+                </div>
+                <div class="person-actions">
+                  <button class="btn" type="button">Editar</button>
+                  <button class="btn btn-danger" type="button">Excluir</button>
+                </div>
+              </div>
+            </article>
+
+            <article class="person-card status-ativo" data-id="e2">
+              <span class="avatar status-ativo">JF</span>
+              <div class="person-info">
+                <div class="person-top">
+                  <div>
+                    <h4 class="person-name">Janete Felix</h4>
+                    <p class="person-role">Projeção terça e quinta</p>
+                  </div>
+                  <span class="badge status-ativo">ativo</span>
+                </div>
+                <div class="person-actions">
+                  <button class="btn" type="button">Editar</button>
+                  <button class="btn btn-danger" type="button">Excluir</button>
+                </div>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section class="team-block" aria-labelledby="team-parcial">
+          <h3 id="team-parcial" class="team-block-title">Parcial-Eventual</h3>
+          <div class="people-list">
+            <article class="person-card status-eventual" data-id="e3">
+              <span class="avatar status-eventual">FP</span>
+              <div class="person-info">
+                <div class="person-top">
+                  <div>
+                    <h4 class="person-name">Francis Pinheiro</h4>
+                    <p class="person-role">Projeção eventual · Reserva geral · Não sobrecarregar</p>
+                  </div>
+                  <span class="badge status-eventual">eventual</span>
+                </div>
+                <div class="person-actions">
+                  <button class="btn" type="button">Editar</button>
+                  <button class="btn btn-danger" type="button">Excluir</button>
+                </div>
+              </div>
+            </article>
+
+            <article class="person-card status-parcial" data-id="e4">
+              <span class="avatar status-parcial">LA</span>
+              <div class="person-info">
+                <div class="person-top">
+                  <div>
+                    <h4 class="person-name">Luiz André</h4>
+                    <p class="person-role">Design remoto · Photoshop · Precisa de templates prontos</p>
+                  </div>
+                  <span class="badge status-parcial">parcial</span>
+                </div>
+                <div class="person-actions">
+                  <button class="btn" type="button">Editar</button>
+                  <button class="btn btn-danger" type="button">Excluir</button>
+                </div>
+              </div>
+            </article>
+
+            <article class="person-card status-parcial" data-id="e5">
+              <span class="avatar status-parcial">AP</span>
+              <div class="person-info">
+                <div class="person-top">
+                  <div>
+                    <h4 class="person-name">Aline Pinheiro</h4>
+                    <p class="person-role">Fotografia · Disponibilidade parcial</p>
+                  </div>
+                  <span class="badge status-parcial">parcial</span>
+                </div>
+                <div class="person-actions">
+                  <button class="btn" type="button">Editar</button>
+                  <button class="btn btn-danger" type="button">Excluir</button>
+                </div>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section class="team-block" aria-labelledby="team-confirmar">
+          <h3 id="team-confirmar" class="team-block-title">A Confirmar</h3>
+          <div class="people-list">
+            <article class="person-card status-confirmar" data-id="e6">
+              <span class="avatar status-confirmar">EO</span>
+              <div class="person-info">
+                <div class="person-top">
+                  <div>
+                    <h4 class="person-name">Emanuelly Oliveira</h4>
+                    <p class="person-role">Vídeo vertical + edição · Função a definir</p>
+                  </div>
+                  <span class="badge status-confirmar">confirmar</span>
+                </div>
+                <div class="person-actions">
+                  <button class="btn" type="button">Editar</button>
+                  <button class="btn btn-danger" type="button">Excluir</button>
+                </div>
+              </div>
+            </article>
+
+            <article class="person-card status-confirmar" data-id="e7">
+              <span class="avatar status-confirmar">RV</span>
+              <div class="person-info">
+                <div class="person-top">
+                  <div>
+                    <h4 class="person-name">Rayssa Vitória</h4>
+                    <p class="person-role">Design Canva · Melhor com templates prontos</p>
+                  </div>
+                  <span class="badge status-confirmar">confirmar</span>
+                </div>
+                <div class="person-actions">
+                  <button class="btn" type="button">Editar</button>
+                  <button class="btn btn-danger" type="button">Excluir</button>
+                </div>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section class="team-block" aria-labelledby="team-fora">
+          <h3 id="team-fora" class="team-block-title">Temporariamente Fora</h3>
+          <div class="people-list">
+            <article class="person-card status-limitado" data-id="e8">
+              <span class="avatar status-limitado">MH</span>
+              <div class="person-info">
+                <div class="person-top">
+                  <div>
+                    <h4 class="person-name">Maysa Hellen</h4>
+                    <p class="person-role">Design remoto · Photoshop · Grávida — trabalho limitado</p>
+                  </div>
+                  <span class="badge status-limitado">limitado</span>
+                </div>
+                <div class="person-actions">
+                  <button class="btn" type="button">Editar</button>
+                  <button class="btn btn-danger" type="button">Excluir</button>
+                </div>
+              </div>
+            </article>
+
+            <article class="person-card status-afastado" data-id="e9">
+              <span class="avatar status-afastado">SA</span>
+              <div class="person-info">
+                <div class="person-top">
+                  <div>
+                    <h4 class="person-name">Samara Alves</h4>
+                    <p class="person-role">Vídeo vertical · Stories ao vivo · Retorno indefinido</p>
+                  </div>
+                  <span class="badge status-afastado">afastado</span>
+                </div>
+                <div class="person-actions">
+                  <button class="btn" type="button">Editar</button>
+                  <button class="btn btn-danger" type="button">Excluir</button>
+                </div>
+              </div>
+            </article>
+          </div>
+        </section>
+      </div>
+
+      <section class="gap-section" aria-labelledby="lacunas-title">
+        <div class="section-head">
+          <div>
+            <h3 id="lacunas-title" class="section-title">Lacunas</h3>
+            <p class="section-copy">Funções críticas que ainda precisam de cobertura.</p>
+          </div>
+        </div>
+        <div id="gap-list" class="gap-list">
+          <article class="gap-card" data-id="l1">
+            <div class="gap-top">
+              <div>
+                <h4 class="gap-title">Gestor de Redes</h4>
+                <p class="gap-description">Tudo com Daniel hoje</p>
+              </div>
+              <span class="gap-counter">0 / 2</span>
+            </div>
+            <div class="card-actions">
+              <button class="btn" type="button">Editar</button>
+              <button class="btn btn-danger" type="button">Excluir</button>
+            </div>
+          </article>
+
+          <article class="gap-card" data-id="l2">
+            <div class="gap-top">
+              <div>
+                <h4 class="gap-title">Cinegrafista Vertical</h4>
+                <p class="gap-description">Domingo sem cobertura fixa</p>
+              </div>
+              <span class="gap-counter">0 / 2</span>
+            </div>
+            <div class="card-actions">
+              <button class="btn" type="button">Editar</button>
+              <button class="btn btn-danger" type="button">Excluir</button>
+            </div>
+          </article>
+
+          <article class="gap-card" data-id="l3">
+            <div class="gap-top">
+              <div>
+                <h4 class="gap-title">Operador de Projeção</h4>
+                <p class="gap-description">Fácil de treinar — prioridade</p>
+              </div>
+              <span class="gap-counter">2 / 5</span>
+            </div>
+            <div class="card-actions">
+              <button class="btn" type="button">Editar</button>
+              <button class="btn btn-danger" type="button">Excluir</button>
+            </div>
+          </article>
+
+          <article class="gap-card" data-id="l4">
+            <div class="gap-top">
+              <div>
+                <h4 class="gap-title">Responsável por Stories</h4>
+                <p class="gap-description">Ninguém publica ao vivo</p>
+              </div>
+              <span class="gap-counter">0 / 2</span>
+            </div>
+            <div class="card-actions">
+              <button class="btn" type="button">Editar</button>
+              <button class="btn btn-danger" type="button">Excluir</button>
+            </div>
+          </article>
+
+          <article class="gap-card" data-id="l5">
+            <div class="gap-top">
+              <div>
+                <h4 class="gap-title">Responsáveis de Conjunto</h4>
+                <p class="gap-description">Irmãs · Jovens · Crianças · Adolescentes · Coral</p>
+              </div>
+              <span class="gap-counter">0 / 5</span>
+            </div>
+            <div class="card-actions">
+              <button class="btn" type="button">Editar</button>
+              <button class="btn btn-danger" type="button">Excluir</button>
+            </div>
+          </article>
+        </div>
+      </section>
+    </section>
+
+    <!-- Aba 5: Eventos -->
+    <section id="tab-eventos" class="view" aria-labelledby="eventos-title">
+      <div class="section-head">
+        <div>
+          <h2 id="eventos-title" class="section-title">Eventos</h2>
+          <p class="section-copy">Datas do ano, frentes por conjunto e régua de antecipação.</p>
+        </div>
+        <div class="actions">
+          <button class="btn btn-primary" type="button">Novo evento</button>
+        </div>
+      </div>
+
+      <div id="event-list" class="event-list">
+        <article class="event-card status-confirmar" data-id="ev1">
+          <div class="event-datebox">
+            <span class="event-month">Abr</span>
+            <strong class="event-day">--</strong>
+          </div>
+          <div class="event-info">
+            <h3 class="event-name">Reunião com as Irmãs</h3>
+            <p class="event-set">Conjunto das Irmãs</p>
+            <div class="event-meta">
+              <span class="badge status-confirmar">confirmar dia</span>
+              <span class="badge">2026</span>
+            </div>
+          </div>
+        </article>
+
+        <article class="event-card status-aguardando" data-id="ev2">
+          <div class="event-datebox">
+            <span class="event-month">2026</span>
+            <strong class="event-day">--</strong>
+          </div>
+          <div class="event-info">
+            <h3 class="event-name">EBF</h3>
+            <p class="event-set">Crianças</p>
+            <div class="event-meta">
+              <span class="badge status-aguardando">sem data</span>
+              <span class="badge">2026</span>
+            </div>
+          </div>
+        </article>
+
+        <article class="event-card status-aguardando" data-id="ev3">
+          <div class="event-datebox">
+            <span class="event-month">2026</span>
+            <strong class="event-day">--</strong>
+          </div>
+          <div class="event-info">
+            <h3 class="event-name">Congresso das Irmãs</h3>
+            <p class="event-set">Conjunto das Irmãs</p>
+            <div class="event-meta">
+              <span class="badge status-aguardando">sem data</span>
+              <span class="badge">2026</span>
+            </div>
+          </div>
+        </article>
+
+        <article class="event-card status-aguardando" data-id="ev4">
+          <div class="event-datebox">
+            <span class="event-month">2026</span>
+            <strong class="event-day">--</strong>
+          </div>
+          <div class="event-info">
+            <h3 class="event-name">Congresso dos Adolescentes</h3>
+            <p class="event-set">Adolescentes</p>
+            <div class="event-meta">
+              <span class="badge status-aguardando">sem data</span>
+              <span class="badge">2026</span>
+            </div>
+          </div>
+        </article>
+
+        <article class="event-card status-agendado" data-id="ev5">
+          <div class="event-datebox">
+            <span class="event-month">Nov</span>
+            <strong class="event-day">--</strong>
+          </div>
+          <div class="event-info">
+            <h3 class="event-name">Congresso dos Jovens</h3>
+            <p class="event-set">Vocal Renascer</p>
+            <div class="event-meta">
+              <span class="badge status-agendado">60d+</span>
+              <span class="badge">2026</span>
+            </div>
+          </div>
+        </article>
+      </div>
+
+      <aside class="rule-card" aria-labelledby="regra-title">
+        <div>
+          <h3 id="regra-title" class="section-title">Regra de antecipação</h3>
+          <p class="section-copy">Régua fixa para preparar cobertura, design e publicação.</p>
+        </div>
+        <div class="rule-grid">
+          <div class="rule-step">
+            <strong>60d</strong>
+            <span class="muted">Definir briefing, identidade e responsáveis.</span>
+          </div>
+          <div class="rule-step">
+            <strong>30d</strong>
+            <span class="muted">Fechar peças, escala e plano de divulgação.</span>
+          </div>
+          <div class="rule-step">
+            <strong>Durante</strong>
+            <span class="muted">Captar vídeo, fotos, stories e bastidores.</span>
+          </div>
+          <div class="rule-step">
+            <strong>Após</strong>
+            <span class="muted">Publicar melhores momentos e salvar arquivos.</span>
+          </div>
+        </div>
+      </aside>
+    </section>
+
+  </main>
+
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
