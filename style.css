@@ -1342,6 +1342,123 @@ textarea.auto-resize { resize: none; overflow: hidden; min-height: 64px; }
 }
 
 /* ═══════════════════════════════════════════════
+   SEMANA ATUAL — destaque na grade do calendário
+   ═══════════════════════════════════════════════ */
+
+.calendar-day.is-current-week {
+  background: #222228;
+  border-top: 2px solid rgba(124, 106, 247, 0.55);
+}
+
+/* ═══════════════════════════════════════════════
+   POSTS ATRASADOS — borda vermelha pulsante
+   ═══════════════════════════════════════════════ */
+
+@keyframes pulse-border {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+  50%       { box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.45); }
+}
+
+.cal-post-card.is-atrasado {
+  border-color: #ef4444;
+  animation: pulse-border 2.2s ease-in-out infinite;
+}
+
+/* Em mobile: só a borda vermelha no dot, sem texto */
+@media (max-width: 639px) {
+  .cal-post-card.is-atrasado .cal-post-bar {
+    outline: 2px solid #ef4444;
+    outline-offset: 1px;
+  }
+}
+
+.badge-atrasado {
+  border-color: rgba(239, 68, 68, 0.5);
+  background: rgba(239, 68, 68, 0.14);
+  color: #fecaca;
+}
+
+.sb-aviso-atrasado {
+  margin: 10px 20px 0;
+  padding: 9px 14px;
+  border: 1px solid rgba(239, 68, 68, 0.45);
+  border-radius: var(--radius);
+  background: rgba(239, 68, 68, 0.1);
+  color: #fecaca;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+/* ═══════════════════════════════════════════════
+   BADGE DE TAREFAS — aba Semana
+   ═══════════════════════════════════════════════ */
+
+.tab {
+  position: relative;
+}
+
+.tab-badge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: #7c6af7;
+  color: #fff;
+  font-size: 0.62rem;
+  font-weight: 800;
+  line-height: 16px;
+  text-align: center;
+  pointer-events: none;
+}
+
+/* ═══════════════════════════════════════════════
+   PRÓXIMO POST — linha nos cards de conta
+   ═══════════════════════════════════════════════ */
+
+.conta-prox-post {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: rgba(28, 28, 32, 0.6);
+  font-size: 0.78rem;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.conta-prox-icone {
+  flex-shrink: 0;
+  font-size: 0.8rem;
+}
+
+.conta-prox-data {
+  flex-shrink: 0;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+.conta-prox-titulo {
+  color: var(--text);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.conta-prox-vazio {
+  color: var(--muted);
+  font-style: italic;
+}
+
+/* ═══════════════════════════════════════════════
    DAY SHEET — mobile bottom sheet (2+ posts)
    ═══════════════════════════════════════════════ */
 

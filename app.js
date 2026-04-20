@@ -163,6 +163,37 @@ function formatarData(iso) {
   return `${d}/${m}/${a}`;
 }
 
+/** Formata data ISO para "Ter, 22 Abr" */
+function formatarDataCurta(iso) {
+  if (!iso) return '—';
+  const [a, m, d] = iso.split('-').map(Number);
+  const diasSem = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+  const mesesC  = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+  const diaSem  = new Date(a, m - 1, d).getDay();
+  return `${diasSem[diaSem]}, ${d} ${mesesC[m - 1]}`;
+}
+
+/** Retorna hoje como string ISO AAAA-MM-DD (sem fuso) */
+function hojeISO() {
+  const h = new Date();
+  return `${h.getFullYear()}-${String(h.getMonth()+1).padStart(2,'0')}-${String(h.getDate()).padStart(2,'0')}`;
+}
+
+/** True se o post está atrasado (data < hoje e não publicado/cancelado) */
+function isAtrasado(post) {
+  if (!post.dataplanejada) return false;
+  if (['publicado','cancelado'].includes(post.status)) return false;
+  return post.dataplanejada < hojeISO();
+}
+
+/** Retorna o próximo post planejado de uma conta (a partir de hoje) */
+function proximoPost(contaId) {
+  const hoje = hojeISO();
+  return db.posts
+    .filter(p => p.contaid === contaId && p.dataplanejada >= hoje && !['publicado','cancelado'].includes(p.status))
+    .sort((a, b) => a.dataplanejada.localeCompare(b.dataplanejada))[0] || null;
+}
+
 /** Retorna nome do mês em português */
 const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho',
                'Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
@@ -540,6 +571,15 @@ function renderContas() {
           </div>
         </div>
         <div class="blocker">${esc(conta.bloqueio)}</div>
+        ${(() => {
+          const np = proximoPost(conta.id);
+          const tituloTrunc = np ? (np.titulo.length > 40 ? np.titulo.slice(0,38)+'…' : np.titulo) : null;
+          return `<div class="conta-prox-post">${
+            np
+              ? `<span class="conta-prox-icone">📅</span><span class="conta-prox-data">${esc(formatarDataCurta(np.dataplanejada))}</span><span class="conta-prox-titulo">${esc(tituloTrunc)}</span>`
+              : `<span class="conta-prox-vazio">Nenhum post planejado</span>`
+          }</div>`;
+        })()}
         ${podeEditar() ? `
         <div class="card-actions">
           <button class="btn" type="button" data-action="editar-conta" data-id="${esc(conta.id)}">Editar</button>
@@ -875,6 +915,11 @@ function renderCalendario() {
   const primeiroDia = new Date(ui.calAno, ui.calMes - 1, 1).getDay();
   const totalDias   = new Date(ui.calAno, ui.calMes, 0).getDate();
 
+  // Intervalo da semana atual (Dom–Sáb)
+  const hojeLocal   = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate());
+  const iniSemana   = new Date(hojeLocal); iniSemana.setDate(hojeLocal.getDate() - hojeLocal.getDay());
+  const fimSemana   = new Date(iniSemana); fimSemana.setDate(iniSemana.getDate() + 6);
+
   const postsPorDia = {};
   postsDoMes().forEach(p => {
     const dia = Number(p.dataplanejada.split('-')[2]);
@@ -894,14 +939,19 @@ function renderCalendario() {
     const dataISO = `${ui.calAno}-${String(ui.calMes).padStart(2,'0')}-${String(dia).padStart(2,'0')}`;
     const posts   = postsPorDia[dia] || [];
 
+    // Semana atual
+    const dataCell  = new Date(ui.calAno, ui.calMes - 1, dia);
+    const eSemanaAtual = dataCell >= iniSemana && dataCell <= fimSemana;
+
     const cards = posts.map(p => {
       const conta      = getConta(p.contaid);
       const cor        = conta?.cor || '#7c6af7';
       const sc         = statusClass(p.status);
       const stColor    = STATUS_COLORS[sc] || '#6b6b7a';
       const tituloTrunc = p.titulo.length > 30 ? p.titulo.slice(0, 28) + '…' : p.titulo;
+      const atrasado   = isAtrasado(p);
       return `
-        <div class="cal-post-card" data-post-id="${esc(p.id)}" title="${esc(p.titulo)}">
+        <div class="cal-post-card${atrasado ? ' is-atrasado' : ''}" data-post-id="${esc(p.id)}" title="${esc(p.titulo)}">
           <div class="cal-post-bar" style="background:${esc(cor)}"></div>
           <div class="cal-post-body">
             <span class="cal-post-title">${esc(tituloTrunc)}</span>
@@ -914,7 +964,7 @@ function renderCalendario() {
     }).join('');
 
     html += `
-      <div class="calendar-day${eHoje ? ' is-today' : ''}" data-date="${esc(dataISO)}">
+      <div class="calendar-day${eHoje ? ' is-today' : ''}${eSemanaAtual ? ' is-current-week' : ''}" data-date="${esc(dataISO)}">
         <span class="calendar-day-number">${dia}</span>
         ${cards}
       </div>`;
@@ -1206,6 +1256,7 @@ function renderListaPosts() {
     const conta = getConta(p.contaid);
     const pc    = profileClass(p.contaid);
     const sc    = statusClass(p.status);
+    const atrasado = isAtrasado(p);
     const modificadores = [
       p.status === 'publicado' ? 'is-publicado' : '',
       p.status === 'cancelado' ? 'is-cancelado' : '',
@@ -1217,6 +1268,7 @@ function renderListaPosts() {
           <div class="post-top">
             <span class="badge ${pc}">${esc(conta?.nome || 'Sem conta')}</span>
             <span class="badge ${sc} clickable" data-action="avancar-status" data-id="${esc(p.id)}" title="Clicar para avançar status">${esc(p.status)}</span>
+            ${atrasado ? '<span class="badge badge-atrasado">Atrasado</span>' : ''}
           </div>
           <h3 class="post-title">${esc(p.titulo)}</h3>
           <p class="post-meta">${esc(capitalize(p.formato))} · ${esc(p.pilar)} · ${formatarData(p.dataplanejada)}${p.horarioplanejado ? ' às ' + esc(p.horarioplanejado) : ''}</p>
@@ -1772,6 +1824,23 @@ async function _confirmarImport(posts, isDupArr) {
 
 const DOMINIOS = ['REUNIÃO', 'EQUIPE', 'CONTEÚDO', 'CULTO', 'OUTRO'];
 
+function atualizarBadgeTarefas() {
+  const btn = document.querySelector('.tab[data-target="tab-semana"]');
+  if (!btn) return;
+  const pendentes = db.tarefas.filter(t => !t.concluida).length;
+  let badge = btn.querySelector('.tab-badge');
+  if (pendentes === 0) {
+    if (badge) badge.remove();
+    return;
+  }
+  if (!badge) {
+    badge = document.createElement('span');
+    badge.className = 'tab-badge';
+    btn.appendChild(badge);
+  }
+  badge.textContent = pendentes > 99 ? '99+' : String(pendentes);
+}
+
 function renderSemana() {
   const container = document.getElementById('week-tasks');
   if (!container) return;
@@ -1820,6 +1889,8 @@ function renderSemana() {
 
   if (btnNova)    { btnNova.style.display    = podeEditar() ? '' : 'none'; if (podeEditar()) btnNova.onclick    = () => abrirModalTarefa(null); }
   if (btnNovaSeq) { btnNovaSeq.style.display = podeEditar() ? '' : 'none'; if (podeEditar()) btnNovaSeq.onclick = () => novaSemana(); }
+
+  atualizarBadgeTarefas();
 }
 
 function onClickSemana(e) {
@@ -1840,6 +1911,7 @@ function toggleTarefa(id) {
     t.concluida = !t.concluida;
     salvarDados(db);
     renderSemana();
+    atualizarBadgeTarefas();
   }
 }
 
@@ -2582,6 +2654,7 @@ function abrirSidebarPost(id) {
       </div>
 
       <div class="sb-body">
+        ${isAtrasado(post) ? '<div class="sb-aviso-atrasado">⚠ Este post está atrasado</div>' : ''}
         ${mkSection('Conceito',
             post.conceito ? `<p class="sb-text">${esc(post.conceito)}</p>` : '', true)}
         ${mkSection('Roteiro',
