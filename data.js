@@ -7,7 +7,7 @@ const SEED_DATA = {
       status: 'instável', responsavel: 'Daniel + Maysa',
       cadencia: 'Seg / Qua / Sex',
       bloqueio: 'Templates Canva pendentes · Equipe incompleta',
-      tier: 1, cor: '#3b82f6'
+      tier: 1, cor: '#3b82f6', tipo: 'igreja'
     },
     {
       id: '2', nome: 'Plixel',
@@ -15,7 +15,7 @@ const SEED_DATA = {
       status: 'instável', responsavel: 'Daniel',
       cadencia: 'A definir',
       bloqueio: 'Gravação travada · Saves em zero',
-      tier: 1, cor: '#7c6af7'
+      tier: 1, cor: '#7c6af7', tipo: 'comercial'
     },
     {
       id: '3', nome: 'Vocal Renascer',
@@ -23,7 +23,7 @@ const SEED_DATA = {
       status: 'travado', responsavel: 'Emanuelly',
       cadencia: 'Dom pós EBD',
       bloqueio: 'Gravação parada · Aprovação pastoral pendente',
-      tier: 2, cor: '#955343'
+      tier: 2, cor: '#955343', tipo: 'igreja'
     },
     {
       id: '4', nome: 'Herança do Senhor',
@@ -31,7 +31,7 @@ const SEED_DATA = {
       status: 'estruturado', responsavel: 'A definir',
       cadencia: '—',
       bloqueio: 'Responsável não definido',
-      tier: 2, cor: '#f59e0b'
+      tier: 2, cor: '#f59e0b', tipo: 'igreja'
     },
     {
       id: '5', nome: 'Estrela da Manhã',
@@ -39,7 +39,7 @@ const SEED_DATA = {
       status: 'aguardando', responsavel: 'A definir',
       cadencia: '—',
       bloqueio: 'Reunião esta semana',
-      tier: 3, cor: '#ec4899'
+      tier: 3, cor: '#ec4899', tipo: 'igreja'
     },
     {
       id: '6', nome: 'Novo Alvorecer',
@@ -47,7 +47,7 @@ const SEED_DATA = {
       status: 'aguardando', responsavel: 'A definir',
       cadencia: '—',
       bloqueio: 'Briefing deles pendente',
-      tier: 3, cor: '#f97316'
+      tier: 3, cor: '#f97316', tipo: 'igreja'
     }
   ],
 

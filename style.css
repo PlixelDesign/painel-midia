@@ -469,15 +469,17 @@ a {
 
 .status-ativo,
 .status-aprovado,
+.status-agendado,
 .status-publicado {
   border-left-color: var(--success);
 }
 
 .status-instavel,
 .status-em-aprovacao,
-.status-agendado,
 .status-parcial,
-.status-eventual {
+.status-eventual,
+.status-aguardando-aprovacao,
+.status-revisando {
   border-left-color: var(--warning);
 }
 
@@ -488,35 +490,66 @@ a {
 
 .status-estruturado,
 .status-confirmar,
-.status-rascunho {
+.status-rascunho,
+.status-pre-producao,
+.status-produzindo {
   border-left-color: var(--info);
 }
 
 .status-aguardando,
-.status-afastado {
+.status-afastado,
+.status-ideia {
   border-left-color: var(--muted);
 }
 
-.status-limitado {
-  border-left-color: var(--limited);
+.status-limitado,
+.status-captacao {
+  border-left-color: #f97316;
+}
+
+.status-edicao {
+  border-left-color: #7c6af7;
 }
 
 .badge.status-ativo,
-.badge.status-aprovado,
-.badge.status-publicado {
+.badge.status-agendado {
   border-color: rgba(34, 197, 94, 0.36);
   background: rgba(34, 197, 94, 0.12);
   color: #bbf7d0;
 }
 
+.badge.status-aprovado {
+  border-color: rgba(134, 239, 172, 0.4);
+  background: rgba(134, 239, 172, 0.14);
+  color: #86efac;
+}
+
+.badge.status-publicado {
+  border-color: rgba(22, 101, 52, 0.5);
+  background: rgba(22, 101, 52, 0.25);
+  color: #4ade80;
+}
+
 .badge.status-instavel,
 .badge.status-em-aprovacao,
-.badge.status-agendado,
 .badge.status-parcial,
-.badge.status-eventual {
+.badge.status-eventual,
+.badge.status-aguardando-aprovacao {
   border-color: rgba(245, 158, 11, 0.38);
   background: rgba(245, 158, 11, 0.12);
   color: #fde68a;
+}
+
+.badge.status-revisando {
+  border-color: rgba(249, 115, 22, 0.38);
+  background: rgba(249, 115, 22, 0.12);
+  color: #fed7aa;
+}
+
+.badge.status-captacao {
+  border-color: rgba(249, 115, 22, 0.38);
+  background: rgba(249, 115, 22, 0.12);
+  color: #fed7aa;
 }
 
 .badge.status-travado,
@@ -528,14 +561,23 @@ a {
 
 .badge.status-estruturado,
 .badge.status-confirmar,
-.badge.status-rascunho {
+.badge.status-rascunho,
+.badge.status-pre-producao,
+.badge.status-produzindo {
   border-color: rgba(59, 130, 246, 0.38);
   background: rgba(59, 130, 246, 0.12);
   color: #bfdbfe;
 }
 
+.badge.status-edicao {
+  border-color: rgba(124, 106, 247, 0.38);
+  background: rgba(124, 106, 247, 0.12);
+  color: #c4b5fd;
+}
+
 .badge.status-aguardando,
-.badge.status-afastado {
+.badge.status-afastado,
+.badge.status-ideia {
   border-color: rgba(107, 107, 122, 0.48);
   background: rgba(107, 107, 122, 0.14);
   color: #d4d4dd;
@@ -1297,4 +1339,137 @@ textarea.auto-resize { resize: none; overflow: hidden; min-height: 64px; }
   display: flex;
   align-items: center;
   gap: 5px;
+}
+
+/* ═══════════════════════════════════════════════
+   DAY SHEET — mobile bottom sheet (2+ posts)
+   ═══════════════════════════════════════════════ */
+
+#day-sheet-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0);
+  z-index: 950;
+  display: flex;
+  align-items: flex-end;
+  transition: background 0.22s ease;
+}
+#day-sheet-overlay.ds-visible {
+  background: rgba(0, 0, 0, 0.55);
+}
+
+#day-sheet {
+  width: 100%;
+  max-height: 75vh;
+  background: #141416;
+  border-top: 1px solid #2a2a30;
+  border-radius: 14px 14px 0 0;
+  display: flex;
+  flex-direction: column;
+  transform: translateY(100%);
+  transition: transform 0.25s cubic-bezier(0.32, 0.72, 0, 1);
+  overflow: hidden;
+}
+#day-sheet.ds-open {
+  transform: translateY(0);
+}
+
+.day-sheet-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 18px 12px;
+  border-bottom: 1px solid #2a2a30;
+  flex-shrink: 0;
+}
+.day-sheet-date {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #6b6b7a;
+}
+.day-sheet-close {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(107, 107, 122, 0.18);
+  border: 1px solid #2a2a30;
+  border-radius: 50%;
+  color: #a0a0b0;
+  font-size: 0.72rem;
+  cursor: pointer;
+  padding: 0;
+}
+
+.day-sheet-list {
+  overflow-y: auto;
+  padding: 8px 0 env(safe-area-inset-bottom, 16px);
+  display: flex;
+  flex-direction: column;
+}
+
+.day-sheet-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 18px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.1s;
+  border-bottom: 1px solid #1e1e24;
+}
+.day-sheet-item:active {
+  background: rgba(124, 106, 247, 0.08);
+}
+
+.day-sheet-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.day-sheet-info {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.day-sheet-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #e8e8f0;
+  line-height: 1.25;
+  word-break: break-word;
+}
+
+.day-sheet-badges {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.day-sheet-new {
+  margin: 8px 18px;
+  padding: 11px 14px;
+  border: 1px dashed #2a2a30;
+  border-radius: 8px;
+  background: transparent;
+  color: #7c6af7;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  text-align: center;
+  transition: background 0.12s, border-color 0.12s;
+}
+.day-sheet-new:active {
+  background: rgba(124, 106, 247, 0.1);
+  border-color: rgba(124, 106, 247, 0.5);
 }

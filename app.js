@@ -850,12 +850,21 @@ function postsDoMes() {
 // ── 7.4 Calendário visual ──
 
 const STATUS_COLORS = {
-  'status-rascunho':     '#3b82f6',
-  'status-em-aprovacao': '#f59e0b',
-  'status-aprovado':     '#22c55e',
-  'status-agendado':     '#f59e0b',
-  'status-publicado':    '#22c55e',
-  'status-cancelado':    '#ef4444',
+  // novos status
+  'status-ideia':                 '#6b6b7a',
+  'status-pre-producao':          '#3b82f6',
+  'status-captacao':              '#f97316',
+  'status-edicao':                '#7c6af7',
+  'status-produzindo':            '#3b82f6',
+  'status-revisando':             '#f97316',
+  'status-aguardando-aprovacao':  '#f59e0b',
+  'status-aprovado':              '#86efac',
+  'status-agendado':              '#22c55e',
+  'status-publicado':             '#166534',
+  'status-cancelado':             '#ef4444',
+  // legado (backward compat)
+  'status-rascunho':              '#6b6b7a',
+  'status-em-aprovacao':          '#f59e0b',
 };
 
 function renderCalendario() {
@@ -920,6 +929,22 @@ function renderCalendario() {
   grid.innerHTML = html;
 
   grid.onclick = e => {
+    const isMobile = window.innerWidth < 640;
+
+    if (isMobile) {
+      const cell = e.target.closest('.calendar-day:not(.is-muted)');
+      if (!cell) return;
+      const posts = [...cell.querySelectorAll('.cal-post-card')].map(c => c.dataset.postId);
+      if (posts.length === 0) {
+        abrirModalPost(null, cell.dataset.date);
+      } else if (posts.length === 1) {
+        abrirSidebarPost(posts[0]);
+      } else {
+        abrirDaySheet(cell.dataset.date, posts);
+      }
+      return;
+    }
+
     const card = e.target.closest('.cal-post-card');
     if (card) {
       e.stopPropagation();
@@ -1020,6 +1045,83 @@ function esconderCalPreview() {
   clearTimeout(_calPreviewTimer);
   const el = document.getElementById('cal-preview');
   if (el) el.remove();
+}
+
+// ── 7.4ab Day sheet mobile (2+ posts) ──
+
+function abrirDaySheet(dataISO, postIds) {
+  fecharDaySheet();
+
+  const posts = postIds.map(id => db.posts.find(p => p.id === id)).filter(Boolean);
+  const dataFmt = formatarData(dataISO);
+
+  const itemsHtml = posts.map(p => {
+    const conta  = getConta(p.contaid);
+    const cor    = conta?.cor || '#7c6af7';
+    const sc     = statusClass(p.status);
+    const stColor = STATUS_COLORS[sc] || '#6b6b7a';
+    const titulo = p.titulo.length > 48 ? p.titulo.slice(0, 46) + '…' : p.titulo;
+    return `
+      <button class="day-sheet-item" data-post-id="${esc(p.id)}">
+        <span class="day-sheet-dot" style="background:${esc(cor)}"></span>
+        <span class="day-sheet-info">
+          <span class="day-sheet-title">${esc(titulo)}</span>
+          <span class="day-sheet-badges">
+            <span class="cal-badge" style="background:${esc(cor)}22;border-color:${esc(cor)}55;color:${esc(cor)}">${esc(conta?.nome || '—')}</span>
+            <span class="cal-badge" style="background:${esc(cor)}22;border-color:${esc(cor)}55;color:${esc(cor)}">${esc(capitalize(p.formato))}</span>
+            <span class="cal-badge" style="background:${stColor}22;border-color:${stColor}55;color:${stColor}">${esc(p.status)}</span>
+          </span>
+        </span>
+      </button>`;
+  }).join('');
+
+  const overlay = document.createElement('div');
+  overlay.id = 'day-sheet-overlay';
+  overlay.innerHTML = `
+    <div id="day-sheet">
+      <div class="day-sheet-header">
+        <span class="day-sheet-date">${esc(dataFmt)}</span>
+        <button class="day-sheet-close" id="day-sheet-close-btn" aria-label="Fechar">✕</button>
+      </div>
+      <div class="day-sheet-list">
+        ${itemsHtml}
+        <button class="day-sheet-new" data-date="${esc(dataISO)}">+ Novo post</button>
+      </div>
+    </div>`;
+
+  document.body.appendChild(overlay);
+
+  requestAnimationFrame(() => {
+    overlay.classList.add('ds-visible');
+    document.getElementById('day-sheet').classList.add('ds-open');
+  });
+
+  overlay.addEventListener('click', e => {
+    if (e.target === overlay) fecharDaySheet();
+  });
+
+  document.getElementById('day-sheet-close-btn').addEventListener('click', fecharDaySheet);
+
+  overlay.querySelectorAll('.day-sheet-item').forEach(btn => {
+    btn.addEventListener('click', () => {
+      fecharDaySheet();
+      abrirSidebarPost(btn.dataset.postId);
+    });
+  });
+
+  overlay.querySelector('.day-sheet-new').addEventListener('click', e => {
+    fecharDaySheet();
+    abrirModalPost(null, e.currentTarget.dataset.date);
+  });
+}
+
+function fecharDaySheet() {
+  const overlay = document.getElementById('day-sheet-overlay');
+  if (!overlay) return;
+  const sheet = document.getElementById('day-sheet');
+  overlay.classList.remove('ds-visible');
+  if (sheet) sheet.classList.remove('ds-open');
+  setTimeout(() => overlay.remove(), 280);
 }
 
 // ── 7.4b Lista semanal mobile ──
@@ -1159,22 +1261,33 @@ function iniciarFiltroStatus() {
 
 // ── 7.6 Fluxo de status dos posts ──
 
-const FLUXO_STATUS = ['rascunho', 'em aprovação', 'aprovado', 'agendado', 'publicado'];
+function getFluxoStatus(formato, tipo) {
+  if (formato === 'reels') {
+    return ['ideia', 'pré-produção', 'captação', 'edição', 'aguardando aprovação', 'aprovado', 'agendado', 'publicado'];
+  }
+  if (tipo === 'comercial') {
+    return ['ideia', 'produzindo', 'revisando', 'agendado', 'publicado'];
+  }
+  return ['ideia', 'produzindo', 'aguardando aprovação', 'aprovado', 'agendado', 'publicado'];
+}
 
 function avancarStatusPost(id) {
   const post = db.posts.find(p => p.id === id);
   if (!post) return;
-  if (post.status === 'cancelado') return; // cancelado só via modal
-  if (post.status === 'publicado') return; // já no fim do fluxo
+  if (post.status === 'cancelado') return;
+  if (post.status === 'publicado') return;
 
-  const idx = FLUXO_STATUS.indexOf(post.status);
-  if (idx < FLUXO_STATUS.length - 1) {
-    post.status = FLUXO_STATUS[idx + 1];
+  const conta = getConta(post.contaid);
+  const fluxo = getFluxoStatus(post.formato, conta?.tipo);
+  const idx   = fluxo.indexOf(post.status);
+  const next  = idx === -1 ? fluxo[0] : (idx < fluxo.length - 1 ? fluxo[idx + 1] : null);
+
+  if (next) {
+    post.status = next;
     salvarDados(db);
     renderCalendario();
     renderListaPosts();
     renderContadoresMes();
-    // Supabase: fire-and-forget (UI já atualizou)
     if (window._sb) {
       _sbEscritaPosts(() => window._sb.schema('public').from('posts').update({ status: post.status }).eq('id', id))
         .then(({ error }) => { if (error) console.warn('[Posts] Erro ao avançar status:', error.message); });
@@ -1184,14 +1297,22 @@ function avancarStatusPost(id) {
 
 function statusClass(status) {
   const map = {
-    'rascunho':      'status-rascunho',
-    'em aprovação':  'status-em-aprovacao',
-    'aprovado':      'status-aprovado',
-    'agendado':      'status-agendado',
-    'publicado':     'status-publicado',
-    'cancelado':     'status-cancelado',
+    'ideia':                 'status-ideia',
+    'pré-produção':          'status-pre-producao',
+    'captação':              'status-captacao',
+    'edição':                'status-edicao',
+    'produzindo':            'status-produzindo',
+    'revisando':             'status-revisando',
+    'aguardando aprovação':  'status-aguardando-aprovacao',
+    'aprovado':              'status-aprovado',
+    'agendado':              'status-agendado',
+    'publicado':             'status-publicado',
+    'cancelado':             'status-cancelado',
+    // legado
+    'rascunho':              'status-rascunho',
+    'em aprovação':          'status-em-aprovacao',
   };
-  return map[status] || 'status-rascunho';
+  return map[status] || 'status-ideia';
 }
 
 function capitalize(str) {
@@ -1202,16 +1323,28 @@ function capitalize(str) {
 
 const FORMATOS   = ['feed', 'carrossel', 'reels', 'stories', 'outro'];
 const PILARES    = ['vida da igreja', 'ensino', 'evangelização', 'comunhão', 'diagnóstico', 'bastidor', 'portfólio', 'oferta', 'outro'];
-const STATUS_POST = ['rascunho', 'em aprovação', 'aprovado', 'agendado', 'publicado', 'cancelado'];
+const STATUS_POST = ['ideia', 'pré-produção', 'captação', 'edição', 'produzindo', 'revisando', 'aguardando aprovação', 'aprovado', 'agendado', 'publicado', 'cancelado', 'rascunho', 'em aprovação'];
+
+function _buildStatusOpts(formato, contaid, statusAtual) {
+  const conta = getConta(contaid);
+  const fluxo = getFluxoStatus(formato, conta?.tipo);
+  const opcoes = [...fluxo, 'cancelado'];
+  // garante que o status atual apareça mesmo se for legado
+  if (statusAtual && !opcoes.includes(statusAtual)) opcoes.unshift(statusAtual);
+  return opcoes.map(s => `<option value="${s}" ${statusAtual === s ? 'selected' : ''}>${capitalize(s)}</option>`).join('');
+}
 
 function abrirModalPost(id, dataPreenchida) {
   const post   = id ? db.posts.find(p => p.id === id) : null;
   const titulo = post ? 'Editar post' : 'Novo post';
 
+  const contaInicial  = post?.contaid || db.contas[0]?.id || '';
+  const formatoInicial = post?.formato || 'feed';
+
   const contasOpts  = db.contas.map(c => `<option value="${esc(c.id)}" ${post?.contaid === c.id ? 'selected' : ''}>${esc(c.nome)}</option>`).join('');
   const formatoOpts = FORMATOS.map(f => `<option value="${f}" ${post?.formato === f ? 'selected' : ''}>${capitalize(f)}</option>`).join('');
   const pilarOpts   = PILARES.map(p => `<option value="${p}" ${post?.pilar === p ? 'selected' : ''}>${capitalize(p)}</option>`).join('');
-  const statusOpts  = STATUS_POST.map(s => `<option value="${s}" ${post?.status === s ? 'selected' : ''}>${capitalize(s)}</option>`).join('');
+  const statusOpts  = _buildStatusOpts(formatoInicial, contaInicial, post?.status || 'ideia');
   const dataVal     = post?.dataplanejada || dataPreenchida || '';
 
   const corpo = `
@@ -1331,7 +1464,7 @@ function abrirModalPost(id, dataPreenchida) {
       legenda:           dados.legenda    || '',
       observacoes:       dados.observacoes || '',
       responsavel:       (dados.responsavel || '').trim(),
-      status:            dados.status || 'rascunho',
+      status:            dados.status || 'ideia',
       linkarquivo:       dados.linkarquivo || '',
       conceito:          (dados.conceito      || '').trim(),
       roteiro:           (dados.roteiro       || '').trim(),
@@ -1382,6 +1515,18 @@ function abrirModalPost(id, dataPreenchida) {
 
     const tituloEl = overlay.querySelector('#post-titulo-input');
     if (tituloEl) tituloEl.focus();
+
+    // Atualiza options de status ao mudar formato ou conta
+    const selFormato = overlay.querySelector('[name="formato"]');
+    const selConta   = overlay.querySelector('[name="contaid"]');
+    const selStatus  = overlay.querySelector('[name="status"]');
+    const _syncStatus = () => {
+      if (!selFormato || !selConta || !selStatus) return;
+      const cur = selStatus.value;
+      selStatus.innerHTML = _buildStatusOpts(selFormato.value, selConta.value, cur);
+    };
+    if (selFormato) selFormato.addEventListener('change', _syncStatus);
+    if (selConta)   selConta.addEventListener('change', _syncStatus);
 
     overlay.querySelectorAll('.auto-resize').forEach(ta => {
       ta.style.height = 'auto';
@@ -1764,10 +1909,10 @@ const STATUS_EQUIPE = ['ativo', 'parcial', 'eventual', 'confirmar', 'limitado', 
 
 // Agrupamento de status para exibição
 const GRUPOS_EQUIPE = [
-  { titulo: 'Ativos',               statuses: ['ativo'] },
+  { titulo: 'Ativos',               statuses: ['ativo', 'limitado'] },
   { titulo: 'Parcial-Eventual',     statuses: ['parcial', 'eventual'] },
   { titulo: 'A Confirmar',          statuses: ['confirmar'] },
-  { titulo: 'Temporariamente Fora', statuses: ['limitado', 'afastado'] },
+  { titulo: 'Temporariamente Fora', statuses: ['afastado'] },
 ];
 
 function renderEquipe() {
@@ -2227,11 +2372,15 @@ async function renderUsuarios() {
       const borderColor = isAdmin ? '#7c6af7' : '#3b82f6';
       const papelClass  = isAdmin ? 'badge-admin' : 'badge-visualizador';
 
-      const contasNomes = u.contas_permitidas
-        ? u.contas_permitidas.split(',').map(raw => {
-            const conta = db.contas.find(c => c.id === raw.trim());
-            return conta ? esc(conta.nome) : `ID:${esc(raw.trim())}`;
-          }).join(' · ')
+      const contasIds = u.contas_permitidas
+        ? u.contas_permitidas.split(',').map(s => s.trim()).filter(Boolean)
+        : [];
+      const contasNomes = contasIds.length
+        ? contasIds.map(raw => {
+            const conta = db.contas.find(c => c.id === raw);
+            if (!conta) return `<span class="badge">ID:${esc(raw)}</span>`;
+            return `<span class="badge" style="background:${esc(conta.cor)}22;border-color:${esc(conta.cor)}55;color:${esc(conta.cor)}">${esc(conta.nome)}</span>`;
+          }).join(' ')
         : '<span class="muted" style="font-style:italic">Todas as contas</span>';
 
       return `
@@ -2277,6 +2426,7 @@ function abrirModalUsuario(id, usuarios) {
     <label class="checkbox-label">
       <input type="checkbox" name="conta_${esc(c.id)}" value="${esc(c.id)}"
         ${contasAtuais.includes(c.id) ? 'checked' : ''}>
+      <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${esc(c.cor)};margin-right:4px;flex-shrink:0"></span>
       ${esc(c.nome)}
     </label>
   `).join('');
