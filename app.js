@@ -50,6 +50,93 @@ function salvarDados(dados) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(dados));
 }
 
+/**
+ * Carrega posts do Supabase e sobrescreve db.posts.
+ * localStorage continua como cache de leitura rápida.
+ * Chamado por auth.js após autenticação.
+ */
+async function carregarPostsSupabase() {
+  if (!window._sb) return;
+  try {
+    const { data, error, count } = await window._sb
+      .schema('public')
+      .from('posts')
+      .select('*', { count: 'exact' })
+      .order('dataplanejada');
+
+    console.log('[Posts] Resultado Supabase → data:', data, '| error:', error, '| count:', count);
+
+    if (error) { console.error('[Posts] Erro ao carregar do Supabase:', error.message); return; }
+
+    // Normaliza campos: aceita tanto lowercase (Supabase) quanto camelCase (seed/legado)
+    db.posts = (data || []).map(p => ({
+      ...p,
+      contaid:               p.contaid               ?? p.contaId              ?? '',
+      linkarquivo:           p.linkarquivo           ?? p.linkArquivo          ?? '',
+      direcaoedicao:         p.direcaoedicao         ?? p.direcaoEdicao        ?? '',
+      horarioplanejado:      p.horarioplanejado      ?? p.horarioPlanejado     ?? '',
+      dataplanejada:         p.dataplanejada         ?? p.dataPlanejada        ?? '',
+      checklistgravacao:     p.checklistgravacao     ?? p.checklistGravacao    ?? '',
+      timelineproducao:      p.timelineproducao      ?? p.timelineProducao     ?? '',
+      checklistgravacaochecked: p.checklistgravacaochecked ?? p.checklistGravacaoChecked ?? '',
+      timelineproducaochecked:  p.timelineproducaochecked  ?? p.timelineProducaoChecked  ?? '',
+    }));
+
+    salvarDados(db);
+    console.log(`[Posts] ${db.posts.length} posts carregados do Supabase.`);
+
+    // Diagnóstico do filtro de contas visíveis
+    const idsVisiveis = (window.USUARIO?.papel === 'admin' || !window.USUARIO?.contasPermitidas?.length)
+      ? db.contas.map(c => c.id)
+      : db.contas.filter(c => window.USUARIO.contasPermitidas.includes(c.id)).map(c => c.id);
+    const bloqueados = db.posts.filter(p => !idsVisiveis.includes(p.contaid));
+    if (bloqueados.length > 0) {
+      console.warn(`[Posts] ${bloqueados.length} post(s) bloqueados pelo filtro de contas visíveis.`,
+        'idsVisiveis:', idsVisiveis,
+        'contaids únicos nos posts:', [...new Set(db.posts.map(p => p.contaid))]);
+    }
+  } catch (e) {
+    console.error('[Posts] Exceção ao carregar:', e.message);
+  }
+}
+
+// ── Helper de escrita com verificação de sessão ───────────────
+
+async function _aguardarSessao(tentativas = 10, intervalo = 500) {
+  for (let i = 0; i < tentativas; i++) {
+    const { data: { session } } = await window._sb.auth.getSession();
+    if (session) return session;
+    if (i < tentativas - 1) await new Promise(r => setTimeout(r, intervalo));
+  }
+  return null;
+}
+
+async function _sbEscritaPosts(fn) {
+  const { data: { session }, error: errSess } = await window._sb.auth.getSession();
+  console.log('[Posts] sessão antes da escrita →',
+    session
+      ? `uid=${session.user.id} | exp=${new Date(session.expires_at * 1000).toISOString()}`
+      : 'null',
+    errSess ? `| errSess=${JSON.stringify(errSess)}` : '');
+
+  let sessaoAtiva = session;
+  if (!sessaoAtiva) {
+    console.warn('[Posts] Sessão não encontrada — aguardando até 5s…');
+    sessaoAtiva = await _aguardarSessao();
+  }
+  if (!sessaoAtiva) {
+    const err = { message: 'Sem sessão ativa. Faça login novamente.' };
+    console.error('[Posts] Abortando escrita — sem sessão ativa após espera.');
+    return { error: err };
+  }
+
+  const resultado = await fn();
+  if (resultado?.error) {
+    console.error('[Posts] Erro Supabase (completo):', JSON.stringify(resultado.error, null, 2));
+  }
+  return resultado;
+}
+
 // Estado global da aplicação
 let db = carregarDados();
 
@@ -58,10 +145,11 @@ let db = carregarDados();
 // ─────────────────────────────────────────────
 
 const ui = {
-  filtroContaId: null,    // null = Todos
+  filtroContaId: null,
   calMes: new Date().getMonth() + 1,
   calAno: new Date().getFullYear(),
   filtroStatusPost: 'todos',
+  mobileConteudoView: 'calendario',
 };
 
 // ─────────────────────────────────────────────
@@ -100,8 +188,8 @@ const PROFILE_CLASSES = [
   'profile-adolescentes',
 ];
 
-function profileClass(contaId) {
-  const idx = db.contas.findIndex(c => c.id === contaId);
+function profileClass(contaid) {
+  const idx = db.contas.findIndex(c => c.id === contaid);
   return PROFILE_CLASSES[idx] || 'profile-subsede';
 }
 
@@ -117,6 +205,20 @@ function esc(str) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+/** Retorna true se o usuário logado pode editar/excluir/criar */
+function podeEditar() {
+  return window.USUARIO?.papel === 'admin';
+}
+
+/** Retorna as contas visíveis para o usuário atual */
+function contasVisiveis() {
+  const u = window.USUARIO;
+  if (!u || u.papel === 'admin' || !u.contasPermitidas || u.contasPermitidas.length === 0) {
+    return db.contas;
+  }
+  return db.contas.filter(c => u.contasPermitidas.includes(c.id));
 }
 
 // ─────────────────────────────────────────────
@@ -155,6 +257,8 @@ function abrirModal(titulo, corpoHTML, onSalvar, opts = {}) {
   `;
 
   document.body.appendChild(overlay);
+
+  if (opts.wide) overlay.querySelector('.modal-card').classList.add('modal-wide');
 
   // Fechar ao clicar fora
   overlay.addEventListener('click', e => {
@@ -333,6 +437,38 @@ function fecharModal() {
     .task-card.is-concluida { opacity: 0.45; }
     .task-card.is-concluida .task-title { text-decoration: line-through; }
     .counter-row .badge { cursor: default; }
+    .person-field-label { font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: #6b6b7a; margin-right: 2px; }
+    .person-capacity { margin-top: 2px; }
+    /* ── Aba Usuários ── */
+    .user-list { display: grid; gap: 12px; }
+    .user-card { background: #1c1c20; border: 1px solid #2a2a30; border-left: 3px solid; border-radius: 8px; padding: 16px; }
+    .user-card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 6px; }
+    .user-name { margin: 0 0 2px; font-size: 0.95rem; font-weight: 700; color: #e8e8f0; }
+    .user-email { margin: 0; font-size: 0.8rem; color: #6b6b7a; font-family: "JetBrains Mono", monospace; }
+    .user-contas { margin: 0 0 12px; font-size: 0.8rem; color: #a0a0b0; }
+    .badge-admin { background: rgba(124,106,247,0.15); color: #a89df9; border: 1px solid rgba(124,106,247,0.3); }
+    .badge-visualizador { background: rgba(59,130,246,0.15); color: #6fa8f5; border: 1px solid rgba(59,130,246,0.3); }
+    .checkbox-group { display: grid; gap: 8px; padding: 4px 0; }
+    .checkbox-label { display: flex; align-items: center; gap: 8px; font-size: 0.875rem; cursor: pointer; color: #e8e8f0; }
+    .checkbox-label input[type="checkbox"] { accent-color: #7c6af7; width: 15px; height: 15px; flex-shrink: 0; cursor: pointer; }
+    .form-hint { margin: 8px 0 0; font-size: 0.78rem; color: #6b6b7a; font-style: italic; }
+    /* ── Importação em lote ── */
+    .import-json-area { font-family: "JetBrains Mono", monospace; font-size: 0.76rem; min-height: 200px; line-height: 1.5; }
+    .import-erro { color: #ef4444; font-size: 0.78rem; white-space: pre-wrap; min-height: 18px; margin: 6px 0 0; }
+    .import-preview-header { font-size: 0.875rem; color: #e8e8f0; margin: 0 0 10px; }
+    .import-dup-warn { color: #f59e0b; }
+    .import-preview-list { display: grid; gap: 6px; max-height: 340px; overflow-y: auto; padding-right: 2px; }
+    .import-preview-row {
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+      padding: 8px 10px; border: 1px solid #2a2a30; border-radius: 6px; background: #141416;
+    }
+    .import-preview-row.import-dup { border-color: rgba(245,158,11,0.45); background: rgba(245,158,11,0.05); }
+    .import-preview-info { flex: 1; min-width: 0; display: grid; gap: 2px; }
+    .import-preview-titulo { font-size: 0.82rem; font-weight: 600; color: #e8e8f0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .import-preview-meta { font-size: 0.7rem; color: #6b6b7a; display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+    .import-preview-dup { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+    .import-dup-badge { font-size: 0.65rem; color: #f59e0b; font-family: "JetBrains Mono", monospace; white-space: nowrap; }
+    .import-dup-action { min-height: 28px !important; padding: 3px 6px !important; font-size: 0.72rem !important; width: 130px; }
     .post-chip { cursor: pointer; }
     .calendar-day { cursor: pointer; }
     .calendar-day:hover { background: rgba(124,106,247,0.06); }
@@ -404,10 +540,11 @@ function renderContas() {
           </div>
         </div>
         <div class="blocker">${esc(conta.bloqueio)}</div>
+        ${podeEditar() ? `
         <div class="card-actions">
           <button class="btn" type="button" data-action="editar-conta" data-id="${esc(conta.id)}">Editar</button>
           <button class="btn btn-danger" type="button" data-action="excluir-conta" data-id="${esc(conta.id)}">Excluir</button>
-        </div>
+        </div>` : ''}
       </article>
     `;
   }).join('');
@@ -415,7 +552,8 @@ function renderContas() {
   // Botão Nova Conta (apenas no section-head, não nos cards)
   const btnNova = document.querySelector('#tab-controle .section-head .btn-primary');
   if (btnNova) {
-    btnNova.onclick = () => abrirModalConta(null);
+    btnNova.style.display = podeEditar() ? '' : 'none';
+    if (podeEditar()) btnNova.onclick = () => abrirModalConta(null);
   }
 
   // Evento nos cards (onclick substitui anterior, evita acúmulo)
@@ -571,12 +709,50 @@ function renderConteudo() {
   renderListaPosts();
   iniciarFiltroStatus();
   vincularBotaoNovoPost();
+  iniciarToggleMobileConteudo();
 }
 
-/** Botão "Novo post" */
+function iniciarToggleMobileConteudo() {
+  const toggle = document.querySelector('.mobile-view-toggle');
+  if (!toggle) return;
+
+  toggle.querySelectorAll('.toggle-btn').forEach(btn => {
+    btn.onclick = () => {
+      toggle.querySelectorAll('.toggle-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      ui.mobileConteudoView = btn.dataset.view;
+
+      const calPanel = document.querySelector('#tab-conteudo .calendar-panel');
+      const postList = document.getElementById('post-list');
+      const weekList = document.getElementById('mobile-week-list');
+
+      if (ui.mobileConteudoView === 'calendario') {
+        calPanel?.classList.remove('is-mobile-hidden');
+        postList?.classList.remove('is-mobile-hidden');
+        weekList?.classList.remove('is-mobile-active');
+      } else {
+        calPanel?.classList.add('is-mobile-hidden');
+        postList?.classList.add('is-mobile-hidden');
+        weekList?.classList.add('is-mobile-active');
+        renderMobileSemanas();
+      }
+    };
+  });
+}
+
+/** Botões da aba Conteúdo */
 function vincularBotaoNovoPost() {
-  const btn = document.querySelector('#tab-conteudo .section-head .btn-primary');
-  if (btn) btn.onclick = () => abrirModalPost(null);
+  const btnNovo = document.querySelector('#tab-conteudo .section-head .btn-primary');
+  if (btnNovo) {
+    btnNovo.style.display = podeEditar() ? '' : 'none';
+    if (podeEditar()) btnNovo.onclick = () => abrirModalPost(null);
+  }
+
+  const btnImport = document.getElementById('btn-importar-posts');
+  if (btnImport) {
+    btnImport.style.display = podeEditar() ? '' : 'none';
+    if (podeEditar()) btnImport.onclick = () => abrirModalImportarPosts();
+  }
 }
 
 // ── 7.1 Filtros de perfil ──
@@ -587,7 +763,7 @@ function renderFiltrosConteudo() {
 
   filtros.innerHTML = `
     <button class="filter-chip ${ui.filtroContaId === null ? 'active' : ''}" type="button" data-conta="todos">Todos</button>
-    ${db.contas.map(c => `
+    ${contasVisiveis().map(c => `
       <button class="filter-chip ${ui.filtroContaId === c.id ? 'active' : ''}" type="button" data-conta="${esc(c.id)}">${esc(c.nome)}</button>
     `).join('')}
   `;
@@ -658,28 +834,38 @@ function renderContadoresMes() {
   `;
 }
 
-/** Posts do mês atual, filtrados por conta se necessário */
+/** Posts do mês atual, filtrados por conta e por permissão */
 function postsDoMes() {
+  const idsVisiveis = contasVisiveis().map(c => c.id);
   return db.posts.filter(p => {
     if (!p.dataplanejada) return false;
     const [a, m] = p.dataplanejada.split('-').map(Number);
     if (a !== ui.calAno || m !== ui.calMes) return false;
-    if (ui.filtroContaId && p.contaId !== ui.filtroContaId) return false;
+    if (ui.filtroContaId && p.contaid !== ui.filtroContaId) return false;
+    if (!idsVisiveis.includes(p.contaid)) return false;
     return true;
   });
 }
 
 // ── 7.4 Calendário visual ──
 
+const STATUS_COLORS = {
+  'status-rascunho':     '#3b82f6',
+  'status-em-aprovacao': '#f59e0b',
+  'status-aprovado':     '#22c55e',
+  'status-agendado':     '#f59e0b',
+  'status-publicado':    '#22c55e',
+  'status-cancelado':    '#ef4444',
+};
+
 function renderCalendario() {
   const grid = document.getElementById('calendar-grid');
   if (!grid) return;
 
-  const hoje = new Date();
-  const primeiroDia = new Date(ui.calAno, ui.calMes - 1, 1).getDay(); // 0=Dom
+  const hoje        = new Date();
+  const primeiroDia = new Date(ui.calAno, ui.calMes - 1, 1).getDay();
   const totalDias   = new Date(ui.calAno, ui.calMes, 0).getDate();
 
-  // Posts do mês agrupados por dia
   const postsPorDia = {};
   postsDoMes().forEach(p => {
     const dia = Number(p.dataplanejada.split('-')[2]);
@@ -689,32 +875,42 @@ function renderCalendario() {
 
   let html = '';
 
-  // Dias do mês anterior (esmaecidos)
   const diasAnterior = new Date(ui.calAno, ui.calMes - 1, 0).getDate();
   for (let i = primeiroDia - 1; i >= 0; i--) {
     html += `<div class="calendar-day is-muted"><span class="calendar-day-number">${diasAnterior - i}</span></div>`;
   }
 
-  // Dias do mês atual
   for (let dia = 1; dia <= totalDias; dia++) {
-    const eHoje = hoje.getDate() === dia && hoje.getMonth() + 1 === ui.calMes && hoje.getFullYear() === ui.calAno;
+    const eHoje   = hoje.getDate() === dia && hoje.getMonth() + 1 === ui.calMes && hoje.getFullYear() === ui.calAno;
     const dataISO = `${ui.calAno}-${String(ui.calMes).padStart(2,'0')}-${String(dia).padStart(2,'0')}`;
-    const chips = (postsPorDia[dia] || []).map(p => {
-      const conta = getConta(p.contaId);
-      const bgColor = conta ? conta.cor : '#7c6af7';
-      const titulo  = p.titulo.length > 22 ? p.titulo.slice(0, 20) + '…' : p.titulo;
-      return `<span class="post-chip" data-post-id="${esc(p.id)}" style="background:${esc(bgColor)}cc" title="${esc(p.titulo)}">${esc(titulo)}</span>`;
+    const posts   = postsPorDia[dia] || [];
+
+    const cards = posts.map(p => {
+      const conta      = getConta(p.contaid);
+      const cor        = conta?.cor || '#7c6af7';
+      const sc         = statusClass(p.status);
+      const stColor    = STATUS_COLORS[sc] || '#6b6b7a';
+      const tituloTrunc = p.titulo.length > 30 ? p.titulo.slice(0, 28) + '…' : p.titulo;
+      return `
+        <div class="cal-post-card" data-post-id="${esc(p.id)}" title="${esc(p.titulo)}">
+          <div class="cal-post-bar" style="background:${esc(cor)}"></div>
+          <div class="cal-post-body">
+            <span class="cal-post-title">${esc(tituloTrunc)}</span>
+            <div class="cal-post-badges">
+              <span class="cal-badge" style="background:${esc(cor)}22;border-color:${esc(cor)}55;color:${esc(cor)}">${esc(capitalize(p.formato))}</span>
+              <span class="cal-badge" style="background:${stColor}22;border-color:${stColor}55;color:${stColor}">${esc(p.status)}</span>
+            </div>
+          </div>
+        </div>`;
     }).join('');
 
     html += `
       <div class="calendar-day${eHoje ? ' is-today' : ''}" data-date="${esc(dataISO)}">
         <span class="calendar-day-number">${dia}</span>
-        ${chips}
-      </div>
-    `;
+        ${cards}
+      </div>`;
   }
 
-  // Preencher resto da grade (6 semanas = 42 células no máximo)
   const totalCelulas = primeiroDia + totalDias;
   const sobras = totalCelulas % 7 === 0 ? 0 : 7 - (totalCelulas % 7);
   for (let i = 1; i <= sobras; i++) {
@@ -723,18 +919,163 @@ function renderCalendario() {
 
   grid.innerHTML = html;
 
-  // Evento de clique nos chips e dias (onclick substitui anterior)
   grid.onclick = e => {
-    const chip = e.target.closest('.post-chip');
-    if (chip) {
+    const card = e.target.closest('.cal-post-card');
+    if (card) {
       e.stopPropagation();
-      abrirModalPost(chip.dataset.postId);
+      abrirSidebarPost(card.dataset.postId);
       return;
     }
     const cell = e.target.closest('.calendar-day:not(.is-muted)');
     if (cell && cell.dataset.date) {
       abrirModalPost(null, cell.dataset.date);
     }
+  };
+
+  iniciarCalPreview(grid);
+}
+
+// ── 7.4a Hover preview no calendário (desktop) ──
+
+let _calPreviewTimer = null;
+
+function iniciarCalPreview(grid) {
+  grid.querySelectorAll('.cal-post-card').forEach(card => {
+    card.addEventListener('mouseenter', () => {
+      clearTimeout(_calPreviewTimer);
+      _calPreviewTimer = setTimeout(() => mostrarCalPreview(card), 400);
+    });
+    card.addEventListener('mouseleave', () => {
+      clearTimeout(_calPreviewTimer);
+      esconderCalPreview();
+    });
+  });
+}
+
+function mostrarCalPreview(card) {
+  esconderCalPreview();
+
+  const id   = card.dataset.postId;
+  const post = db.posts.find(p => p.id === id);
+  if (!post) return;
+
+  const conta    = getConta(post.contaid);
+  const cor      = conta?.cor || '#7c6af7';
+  const sc       = statusClass(post.status);
+  const conceito = post.conceito
+    ? (post.conceito.length > 100 ? post.conceito.slice(0, 98) + '…' : post.conceito)
+    : '';
+
+  const el = document.createElement('div');
+  el.id = 'cal-preview';
+  el.className = 'cal-preview';
+  el.innerHTML = `
+    <p class="cal-pv-title">${esc(post.titulo)}</p>
+    <p class="cal-pv-meta">
+      <span style="color:${esc(cor)};font-weight:700">${esc(conta?.nome || '—')}</span>
+      <span>·</span>
+      <span>${esc(capitalize(post.formato))}</span>
+      <span>·</span>
+      <span class="badge ${sc}" style="font-size:0.58rem;min-height:18px;padding:2px 6px">${esc(post.status)}</span>
+    </p>
+    ${conceito ? `<div class="cal-pv-divider"></div><p class="cal-pv-conceito">${esc(conceito)}</p>` : ''}
+    ${(post.responsavel || post.dataplanejada) ? '<div class="cal-pv-divider"></div>' : ''}
+    ${post.responsavel  ? `<p class="cal-pv-resp">👤 ${esc(post.responsavel)}</p>` : ''}
+    ${post.dataplanejada ? `<p class="cal-pv-data">📅 ${formatarData(post.dataplanejada)}${post.horarioplanejado ? ' às ' + esc(post.horarioplanejado) : ''}</p>` : ''}
+  `;
+
+  // Insere invisível para medir dimensões
+  el.style.opacity    = '0';
+  el.style.transition = 'none';
+  document.body.appendChild(el);
+
+  const rect = card.getBoundingClientRect();
+  const pvW  = el.offsetWidth  || 236;
+  const pvH  = el.offsetHeight || 120;
+  const vw   = window.innerWidth;
+  const vh   = window.innerHeight;
+  const gap  = 8;
+
+  // Tenta à direita; se não couber, abre à esquerda
+  let left = rect.right + gap;
+  if (left + pvW > vw - gap) left = rect.left - pvW - gap;
+  left = Math.max(gap, left);
+
+  // Alinha ao topo do card, clampado à viewport
+  let top = rect.top;
+  top = Math.min(top, vh - pvH - gap);
+  top = Math.max(gap, top);
+
+  el.style.left = left + 'px';
+  el.style.top  = top  + 'px';
+
+  // Anima entrada
+  requestAnimationFrame(() => {
+    el.style.transition = 'opacity 0.12s ease';
+    el.style.opacity    = '1';
+  });
+}
+
+function esconderCalPreview() {
+  clearTimeout(_calPreviewTimer);
+  const el = document.getElementById('cal-preview');
+  if (el) el.remove();
+}
+
+// ── 7.4b Lista semanal mobile ──
+
+function renderMobileSemanas() {
+  const container = document.getElementById('mobile-week-list');
+  if (!container) return;
+
+  const posts = postsDoMes().sort((a, b) => {
+    const ka = a.dataplanejada + (a.horarioplanejado || '');
+    const kb = b.dataplanejada + (b.horarioplanejado || '');
+    return ka.localeCompare(kb);
+  });
+
+  if (posts.length === 0) {
+    container.innerHTML = '<p class="muted" style="padding:12px">Nenhum post neste período.</p>';
+    return;
+  }
+
+  const semanas = {};
+  posts.forEach(p => {
+    const dia = Number(p.dataplanejada.split('-')[2]);
+    const sem = Math.ceil(dia / 7);
+    if (!semanas[sem]) semanas[sem] = [];
+    semanas[sem].push(p);
+  });
+
+  container.innerHTML = Object.entries(semanas).map(([, semPosts]) => {
+    const dias  = semPosts.map(p => Number(p.dataplanejada.split('-')[2]));
+    const dMin  = Math.min(...dias);
+    const dMax  = Math.max(...dias);
+    const label = dMin === dMax ? `Dia ${dMin}` : `Dias ${dMin}–${dMax}`;
+
+    const items = semPosts.map(p => {
+      const conta = getConta(p.contaid);
+      const cor   = conta?.cor || '#7c6af7';
+      const sc    = statusClass(p.status);
+      return `
+        <article class="post-item ${sc}" data-id="${esc(p.id)}" style="cursor:pointer;border-left-color:${esc(cor)}">
+          <div>
+            <div class="post-top">
+              <span class="badge" style="background:${esc(cor)}22;border-color:${esc(cor)}55;color:${esc(cor)}">${esc(conta?.nome || '')}</span>
+              <span class="badge ${sc}">${esc(p.status)}</span>
+            </div>
+            <h3 class="post-title">${esc(p.titulo)}</h3>
+            <p class="post-meta">${esc(capitalize(p.formato))} · ${formatarData(p.dataplanejada)}${p.horarioplanejado ? ' às ' + esc(p.horarioplanejado) : ''}</p>
+          </div>
+        </article>`;
+    }).join('');
+
+    return `<div class="mobile-week-block"><span class="mobile-week-label">${label}</span>${items}</div>`;
+  }).join('');
+
+  container.onclick = e => {
+    const article = e.target.closest('.post-item[data-id]');
+    if (article) abrirSidebarPost(article.dataset.id);
   };
 }
 
@@ -760,8 +1101,8 @@ function renderListaPosts() {
   }
 
   lista.innerHTML = posts.map(p => {
-    const conta = getConta(p.contaId);
-    const pc    = profileClass(p.contaId);
+    const conta = getConta(p.contaid);
+    const pc    = profileClass(p.contaid);
     const sc    = statusClass(p.status);
     const modificadores = [
       p.status === 'publicado' ? 'is-publicado' : '',
@@ -780,19 +1121,25 @@ function renderListaPosts() {
         </div>
         <div class="post-details">
           ${p.responsavel ? `<span class="badge">${esc(p.responsavel)}</span>` : ''}
-          <button class="btn" type="button" data-action="editar-post" data-id="${esc(p.id)}">Editar</button>
         </div>
       </article>
     `;
   }).join('');
 
   lista.onclick = e => {
-    const btn = e.target.closest('[data-action]');
-    if (!btn) return;
-    const { action, id } = btn.dataset;
-    if (action === 'editar-post')     abrirModalPost(id);
-    if (action === 'avancar-status')  avancarStatusPost(id);
+    // Status badge: avança sem abrir sidebar
+    const badge = e.target.closest('[data-action="avancar-status"]');
+    if (badge) {
+      e.stopPropagation();
+      avancarStatusPost(badge.dataset.id);
+      return;
+    }
+    // Clique no artigo → sidebar
+    const article = e.target.closest('.post-item[data-id]');
+    if (article) abrirSidebarPost(article.dataset.id);
   };
+  // Cursor pointer nos artigos
+  lista.querySelectorAll('.post-item[data-id]').forEach(a => { a.style.cursor = 'pointer'; });
 }
 
 function iniciarFiltroStatus() {
@@ -827,6 +1174,11 @@ function avancarStatusPost(id) {
     renderCalendario();
     renderListaPosts();
     renderContadoresMes();
+    // Supabase: fire-and-forget (UI já atualizou)
+    if (window._sb) {
+      _sbEscritaPosts(() => window._sb.schema('public').from('posts').update({ status: post.status }).eq('id', id))
+        .then(({ error }) => { if (error) console.warn('[Posts] Erro ao avançar status:', error.message); });
+    }
   }
 }
 
@@ -848,104 +1200,161 @@ function capitalize(str) {
 
 // ── 7.7 Modal de post ──
 
-const FORMATOS = ['feed', 'carrossel', 'reels', 'stories', 'outro'];
-const PILARES  = ['vida da igreja', 'ensino', 'evangelização', 'comunhão', 'diagnóstico', 'bastidor', 'portfólio', 'oferta', 'outro'];
+const FORMATOS   = ['feed', 'carrossel', 'reels', 'stories', 'outro'];
+const PILARES    = ['vida da igreja', 'ensino', 'evangelização', 'comunhão', 'diagnóstico', 'bastidor', 'portfólio', 'oferta', 'outro'];
 const STATUS_POST = ['rascunho', 'em aprovação', 'aprovado', 'agendado', 'publicado', 'cancelado'];
 
 function abrirModalPost(id, dataPreenchida) {
-  const post  = id ? db.posts.find(p => p.id === id) : null;
+  const post   = id ? db.posts.find(p => p.id === id) : null;
   const titulo = post ? 'Editar post' : 'Novo post';
 
-  const contasOpts = db.contas.map(c =>
-    `<option value="${esc(c.id)}" ${post?.contaId === c.id ? 'selected' : ''}>${esc(c.nome)}</option>`
-  ).join('');
-
-  const formatoOpts = FORMATOS.map(f =>
-    `<option value="${f}" ${post?.formato === f ? 'selected' : ''}>${capitalize(f)}</option>`
-  ).join('');
-
-  const pilarOpts = PILARES.map(p =>
-    `<option value="${p}" ${post?.pilar === p ? 'selected' : ''}>${capitalize(p)}</option>`
-  ).join('');
-
-  const statusOpts = STATUS_POST.map(s =>
-    `<option value="${s}" ${post?.status === s ? 'selected' : ''}>${capitalize(s)}</option>`
-  ).join('');
-
-  const dataVal = post?.dataplanejada || dataPreenchida || '';
+  const contasOpts  = db.contas.map(c => `<option value="${esc(c.id)}" ${post?.contaid === c.id ? 'selected' : ''}>${esc(c.nome)}</option>`).join('');
+  const formatoOpts = FORMATOS.map(f => `<option value="${f}" ${post?.formato === f ? 'selected' : ''}>${capitalize(f)}</option>`).join('');
+  const pilarOpts   = PILARES.map(p => `<option value="${p}" ${post?.pilar === p ? 'selected' : ''}>${capitalize(p)}</option>`).join('');
+  const statusOpts  = STATUS_POST.map(s => `<option value="${s}" ${post?.status === s ? 'selected' : ''}>${capitalize(s)}</option>`).join('');
+  const dataVal     = post?.dataplanejada || dataPreenchida || '';
 
   const corpo = `
-    <div class="form-group">
-      <label class="form-label">Perfil</label>
-      <select class="form-control" name="contaId">${contasOpts}</select>
-    </div>
-    <div class="form-group">
-      <label class="form-label">Título</label>
-      <input class="form-control" name="titulo" type="text" value="${esc(post?.titulo || '')}" required>
-    </div>
-    <div class="form-row">
-      <div class="form-group">
-        <label class="form-label">Formato</label>
-        <select class="form-control" name="formato">${formatoOpts}</select>
+    <div class="modal-two-col">
+
+      <!-- Coluna esquerda: campos básicos -->
+      <div class="modal-col">
+        <div class="form-group">
+          <label class="form-label">Perfil</label>
+          <select class="form-control" name="contaid" tabindex="1">${contasOpts}</select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Título</label>
+          <input class="form-control" id="post-titulo-input" name="titulo" type="text"
+            value="${esc(post?.titulo || '')}" tabindex="2" required>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Formato</label>
+            <select class="form-control" name="formato" tabindex="3">${formatoOpts}</select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Pilar</label>
+            <select class="form-control" name="pilar" tabindex="4">${pilarOpts}</select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Data</label>
+            <input class="form-control" name="dataplanejada" type="date" value="${esc(dataVal)}" tabindex="5">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Horário</label>
+            <input class="form-control" name="horarioplanejado" type="time" value="${esc(post?.horarioplanejado || '')}" tabindex="6">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Status</label>
+          <select class="form-control" name="status" tabindex="7">${statusOpts}</select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Responsável</label>
+          <input class="form-control" name="responsavel" type="text" value="${esc(post?.responsavel || '')}" tabindex="8">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Link do arquivo</label>
+          <input class="form-control" name="linkarquivo" type="url" value="${esc(post?.linkarquivo || '')}" tabindex="9">
+        </div>
       </div>
-      <div class="form-group">
-        <label class="form-label">Pilar editorial</label>
-        <select class="form-control" name="pilar">${pilarOpts}</select>
+
+      <!-- Coluna direita: campos de produção -->
+      <div class="modal-col">
+        <div class="form-group">
+          <label class="form-label">Conceito</label>
+          <textarea class="form-control auto-resize" name="conceito" tabindex="10"
+            placeholder="Ideia central — o que precisa transmitir">${esc(post?.conceito || '')}</textarea>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Roteiro</label>
+          <textarea class="form-control auto-resize" name="roteiro" tabindex="11"
+            placeholder="Shot a shot (reels) ou sequência de slides (carrossel)">${esc(post?.roteiro || '')}</textarea>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Direção de Edição</label>
+          <textarea class="form-control auto-resize" name="direcaoedicao" tabindex="12"
+            placeholder="Ritmo, cortes, música, efeitos, texto na tela">${esc(post?.direcaoedicao || '')}</textarea>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Hashtags</label>
+          <textarea class="form-control auto-resize" name="hashtags" tabindex="13"
+            placeholder="#hashtag1 #hashtag2">${esc(post?.hashtags || '')}</textarea>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Legenda</label>
+          <textarea class="form-control auto-resize" name="legenda" tabindex="14">${esc(post?.legenda || '')}</textarea>
+        </div>
       </div>
-    </div>
-    <div class="form-row">
-      <div class="form-group">
-        <label class="form-label">Data planejada</label>
-        <input class="form-control" name="dataplanejada" type="date" value="${esc(dataVal)}">
+
+      <!-- Linha completa abaixo das duas colunas -->
+      <div class="form-group modal-full-row">
+        <label class="form-label">
+          Checklist de gravação
+          <span style="color:#6b6b7a;font-weight:400;text-transform:none;letter-spacing:0">(itens separados por |)</span>
+        </label>
+        <input class="form-control" name="checklistgravacao" type="text" tabindex="15"
+          placeholder="Luz natural | Roupa definida | Local escolhido | Celular carregado"
+          value="${esc(post?.checklistgravacao || '')}">
       </div>
-      <div class="form-group">
-        <label class="form-label">Horário</label>
-        <input class="form-control" name="horarioplanejado" type="time" value="${esc(post?.horarioplanejado || '')}">
+      <div class="form-group modal-full-row">
+        <label class="form-label">
+          Timeline de produção
+          <span style="color:#6b6b7a;font-weight:400;text-transform:none;letter-spacing:0">(etapas separadas por |)</span>
+        </label>
+        <input class="form-control" name="timelineproducao" type="text" tabindex="16"
+          placeholder="Roteiro escrito | Gravação feita | Edição concluída | Aprovação | Agendado"
+          value="${esc(post?.timelineproducao || '')}">
       </div>
-    </div>
-    <div class="form-group">
-      <label class="form-label">Status</label>
-      <select class="form-control" name="status">${statusOpts}</select>
-    </div>
-    <div class="form-group">
-      <label class="form-label">Responsável</label>
-      <input class="form-control" name="responsavel" type="text" value="${esc(post?.responsavel || '')}">
-    </div>
-    <div class="form-group">
-      <label class="form-label">Legenda</label>
-      <textarea class="form-control" name="legenda">${esc(post?.legenda || '')}</textarea>
-    </div>
-    <div class="form-group">
-      <label class="form-label">Observações</label>
-      <textarea class="form-control" name="observacoes">${esc(post?.observacoes || '')}</textarea>
-    </div>
-    <div class="form-group">
-      <label class="form-label">Link do arquivo</label>
-      <input class="form-control" name="linkArquivo" type="url" value="${esc(post?.linkArquivo || '')}">
+      <div class="form-group modal-full-row">
+        <label class="form-label">Observações</label>
+        <textarea class="form-control auto-resize" name="observacoes" tabindex="17">${esc(post?.observacoes || '')}</textarea>
+      </div>
+
     </div>
   `;
 
-  abrirModal(titulo, corpo, form => {
+  abrirModal(titulo, corpo, async form => {
     const dados = Object.fromEntries(new FormData(form));
     if (!dados.titulo.trim()) { alert('Título é obrigatório.'); return; }
 
+    const campos = {
+      contaid:           dados.contaid,
+      titulo:            dados.titulo.trim(),
+      formato:           dados.formato,
+      pilar:             dados.pilar,
+      dataplanejada:     dados.dataplanejada,
+      horarioplanejado:  dados.horarioplanejado,
+      legenda:           dados.legenda    || '',
+      observacoes:       dados.observacoes || '',
+      responsavel:       (dados.responsavel || '').trim(),
+      status:            dados.status || 'rascunho',
+      linkarquivo:       dados.linkarquivo || '',
+      conceito:          (dados.conceito      || '').trim(),
+      roteiro:           (dados.roteiro       || '').trim(),
+      direcaoedicao:     (dados.direcaoedicao || '').trim(),
+      hashtags:          (dados.hashtags      || '').trim(),
+      checklistgravacao: (dados.checklistgravacao || '').trim(),
+      timelineproducao:  (dados.timelineproducao  || '').trim(),
+    };
+
     if (post) {
-      Object.assign(post, dados);
+      campos.checklistgravacaochecked = campos.checklistgravacao !== post.checklistgravacao
+        ? '' : (post.checklistgravacaochecked || '');
+      campos.timelineproducaochecked = campos.timelineproducao !== post.timelineproducao
+        ? '' : (post.timelineproducaochecked || '');
+
+      const { error } = await _sbEscritaPosts(() => window._sb.schema('public').from('posts').update(campos).eq('id', id));
+      if (error) { alert('Erro ao salvar post: ' + error.message); return; }
+      Object.assign(post, campos);
     } else {
-      db.posts.push({
-        id: crypto.randomUUID(),
-        contaId: dados.contaId,
-        titulo: dados.titulo.trim(),
-        formato: dados.formato,
-        pilar: dados.pilar,
-        dataplanejada: dados.dataplanejada,
-        horarioplanejado: dados.horarioplanejado,
-        legenda: dados.legenda,
-        observacoes: dados.observacoes,
-        responsavel: dados.responsavel.trim(),
-        status: dados.status || 'rascunho',
-        linkArquivo: dados.linkArquivo,
-      });
+      const novoPost = { id: crypto.randomUUID(), checklistgravacaochecked: '', timelineproducaochecked: '', ...campos };
+      const { error } = await _sbEscritaPosts(() => window._sb.schema('public').from('posts').insert(novoPost));
+      if (error) { alert('Erro ao criar post: ' + error.message); return; }
+      db.posts.push(novoPost);
     }
     salvarDados(db);
     fecharModal();
@@ -954,14 +1363,262 @@ function abrirModalPost(id, dataPreenchida) {
     renderContadoresMes();
   }, {
     mostrarExcluir: !!post,
-    onExcluir: () => {
+    onExcluir: async () => {
+      const { error } = await _sbEscritaPosts(() => window._sb.schema('public').from('posts').delete().eq('id', id));
+      if (error) { alert('Erro ao excluir post: ' + error.message); return; }
       db.posts = db.posts.filter(p => p.id !== id);
       salvarDados(db);
       renderCalendario();
       renderListaPosts();
       renderContadoresMes();
     },
+    wide: true,
   });
+
+  // Pós-abertura: foco no título, auto-resize, Ctrl+Enter
+  requestAnimationFrame(() => {
+    const overlay = document.getElementById('modal-overlay');
+    if (!overlay) return;
+
+    const tituloEl = overlay.querySelector('#post-titulo-input');
+    if (tituloEl) tituloEl.focus();
+
+    overlay.querySelectorAll('.auto-resize').forEach(ta => {
+      ta.style.height = 'auto';
+      ta.style.height = Math.max(64, ta.scrollHeight) + 'px';
+      ta.addEventListener('input', () => {
+        ta.style.height = 'auto';
+        ta.style.height = Math.max(64, ta.scrollHeight) + 'px';
+      });
+    });
+
+    overlay.addEventListener('keydown', e => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        overlay.querySelector('#modal-salvar')?.click();
+      }
+    });
+  });
+}
+
+// ── 7.8 Importação em lote de posts ──
+
+function abrirModalImportarPosts() {
+  let fase = 1;
+  let postsValidados = [];
+  let isDupArr       = [];
+
+  const corpo = `
+    <div id="import-fase1">
+      <div class="form-group">
+        <label class="form-label">Cole o JSON com os posts</label>
+        <textarea class="form-control import-json-area" id="import-json-input"
+          placeholder='[{"titulo":"Título", "contaid":"1", "dataplanejada":"2026-05-01", "formato":"reels", ...}]'></textarea>
+      </div>
+      <p id="import-erro" class="import-erro"></p>
+    </div>
+    <div id="import-fase2" style="display:none"></div>
+  `;
+
+  abrirModal('Importar posts', corpo, async () => {
+    if (fase === 1) {
+      const jsonStr = document.getElementById('import-json-input')?.value || '';
+      const result  = _validarImportJSON(jsonStr);
+
+      if (!result.ok) {
+        document.getElementById('import-erro').textContent = result.erro;
+        return; // mantém modal aberto
+      }
+
+      postsValidados = result.posts;
+      isDupArr       = result.isDupArr;
+
+      document.getElementById('import-fase1').style.display = 'none';
+      document.getElementById('import-fase2').innerHTML     = _renderPreviewImport(postsValidados, isDupArr);
+      document.getElementById('import-fase2').style.display = 'block';
+      document.getElementById('modal-salvar').textContent   = 'Confirmar importação';
+      fase = 2;
+
+    } else {
+      await _confirmarImport(postsValidados, isDupArr);
+    }
+  }, { labelSalvar: 'Analisar JSON', wide: true });
+}
+
+function _validarImportJSON(jsonStr) {
+  if (!jsonStr.trim()) return { ok: false, erro: 'Cole um JSON válido no campo acima.' };
+
+  let arr;
+  try { arr = JSON.parse(jsonStr); }
+  catch (e) { return { ok: false, erro: `JSON inválido: ${e.message}` }; }
+
+  if (!Array.isArray(arr)) return { ok: false, erro: 'O JSON deve ser um array  [ { ... }, { ... } ].' };
+  if (arr.length === 0)    return { ok: false, erro: 'O array está vazio.' };
+
+  const erros = [];
+  const posts = arr.map((item, i) => {
+    const ausentes = [];
+    if (!String(item.titulo  ?? '').trim()) ausentes.push('titulo');
+    if (!String(item.contaid ?? ''))        ausentes.push('contaid');
+    if (!item.dataplanejada)                ausentes.push('dataplanejada');
+    if (ausentes.length) erros.push(`Item ${i + 1}: campos obrigatórios ausentes (${ausentes.join(', ')})`);
+
+    return {
+      id:                       crypto.randomUUID(),
+      contaid:                  String(item.contaid          ?? ''),
+      titulo:                   String(item.titulo           ?? '').trim(),
+      formato:                  item.formato                 || 'feed',
+      pilar:                    item.pilar                   || 'outro',
+      dataplanejada:            item.dataplanejada           || '',
+      horarioplanejado:         item.horarioplanejado        || '',
+      conceito:                 item.conceito                || '',
+      roteiro:                  item.roteiro                 || '',
+      direcaoedicao:            item.direcaoedicao           || '',
+      checklistgravacao:        item.checklistgravacao       || '',
+      checklistgravacaochecked: '',
+      timelineproducao:         item.timelineproducao        || '',
+      timelineproducaochecked:  '',
+      hashtags:                 item.hashtags                || '',
+      legenda:                  item.legenda                 || '',
+      observacoes:              item.observacoes             || '',
+      responsavel:              String(item.responsavel      ?? '').trim(),
+      status:                   item.status                  || 'rascunho',
+      linkarquivo:              item.linkarquivo             || '',
+    };
+  });
+
+  if (erros.length) return { ok: false, erro: erros.join('\n') };
+
+  const isDupArr = posts.map(p =>
+    db.posts.some(ex =>
+      ex.titulo.toLowerCase() === p.titulo.toLowerCase() &&
+      ex.dataplanejada === p.dataplanejada
+    )
+  );
+
+  return { ok: true, posts, isDupArr };
+}
+
+function _renderPreviewImport(posts, isDupArr) {
+  const dupCount = isDupArr.filter(Boolean).length;
+
+  const linhas = posts.map((p, i) => {
+    const isDup = isDupArr[i];
+    const conta = getConta(p.contaid);
+    const sc    = statusClass(p.status);
+    return `
+      <div class="import-preview-row${isDup ? ' import-dup' : ''}">
+        <div class="import-preview-info">
+          <span class="import-preview-titulo">${esc(p.titulo)}</span>
+          <span class="import-preview-meta">
+            ${esc(conta?.nome || `ID:${p.contaid}`)} · ${formatarData(p.dataplanejada)}
+            · <span class="badge ${sc}" style="font-size:0.56rem;min-height:16px;padding:1px 5px">${esc(p.status)}</span>
+          </span>
+        </div>
+        ${isDup ? `
+        <div class="import-preview-dup">
+          <span class="import-dup-badge">⚠ já existe</span>
+          <select class="form-control import-dup-action" data-idx="${i}">
+            <option value="sobrescrever">Sobrescrever</option>
+            <option value="pular">Pular</option>
+          </select>
+        </div>` : ''}
+      </div>`;
+  }).join('');
+
+  return `
+    <p class="import-preview-header">
+      <strong>${posts.length}</strong> post${posts.length !== 1 ? 's' : ''} encontrado${posts.length !== 1 ? 's' : ''}.
+      ${dupCount > 0
+        ? `<span class="import-dup-warn"> ${dupCount} já existe${dupCount !== 1 ? 'm' : ''} — escolha a ação abaixo.</span>`
+        : ' Nenhuma duplicata encontrada.'}
+    </p>
+    <div class="import-preview-list">${linhas}</div>`;
+}
+
+async function _confirmarImport(posts, isDupArr) {
+  let criados     = 0;
+  let atualizados = 0;
+  let pulados     = 0;
+  const erros     = [];
+
+  const postsParaSalvar = [];
+  const tiposAcao       = [];
+
+  for (let i = 0; i < posts.length; i++) {
+    const post   = posts[i];
+    const sel    = document.querySelector(`.import-dup-action[data-idx="${i}"]`);
+    const action = isDupArr[i] ? (sel?.value || 'pular') : 'criar';
+
+    if (action === 'pular') { pulados++; continue; }
+
+    if (action === 'sobrescrever') {
+      const { data: existente, error: errBusca } = await window._sb
+        .schema('public')
+        .from('posts')
+        .select('id')
+        .eq('contaid',       post.contaid)
+        .eq('dataplanejada', post.dataplanejada)
+        .eq('titulo',        post.titulo)
+        .maybeSingle();
+
+      if (errBusca) { erros.push(`"${post.titulo}": ${errBusca.message}`); continue; }
+
+      postsParaSalvar.push({ ...post, id: existente?.id || post.id });
+    } else {
+      postsParaSalvar.push(post);
+    }
+    tiposAcao.push(action);
+  }
+
+  if (postsParaSalvar.length > 0) {
+    const response = await fetch(
+      'https://syqskrpjzceocmjlirnp.supabase.co/functions/v1/upsert-posts',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': window._sbKey,
+          'Authorization': `Bearer ${window._sbKey}`
+        },
+        body: JSON.stringify({ posts: postsParaSalvar })
+      }
+    );
+
+    if (!response.ok) {
+      const txt = await response.text();
+      console.error('[upsert-posts] erro HTTP', response.status, txt);
+      erros.push(`Erro na Edge Function (${response.status}): ${txt}`);
+    } else {
+      const raw     = await response.json();
+      const results = Array.isArray(raw) ? raw : [];
+      if (!Array.isArray(raw)) console.warn('[upsert-posts] resposta inesperada:', raw);
+
+      results.forEach((r, i) => {
+        if (r.error) {
+          erros.push(`"${r.titulo}": ${r.error}`);
+        } else if (tiposAcao[i] === 'sobrescrever') {
+          atualizados++;
+        } else {
+          criados++;
+        }
+      });
+    }
+  }
+
+  // Recarrega do Supabase para garantir consistência
+  await carregarPostsSupabase();
+  fecharModal();
+  renderCalendario();
+  renderListaPosts();
+  renderContadoresMes();
+
+  const partes = [];
+  if (criados > 0)      partes.push(`${criados} criado${criados !== 1 ? 's' : ''}`);
+  if (atualizados > 0)  partes.push(`${atualizados} atualizado${atualizados !== 1 ? 's' : ''}`);
+  if (pulados > 0)      partes.push(`${pulados} pulado${pulados !== 1 ? 's' : ''}`);
+  const resumo = `Importação concluída!\n${partes.join(', ') || 'Nenhum post processado'}.`;
+  const detalhesErro = erros.length ? `\n\nErros (${erros.length}):\n${erros.slice(0, 5).join('\n')}` : '';
+  alert(resumo + detalhesErro);
 }
 
 // ─────────────────────────────────────────────
@@ -995,8 +1652,7 @@ function renderSemana() {
               <h4 class="task-title">${esc(t.titulo)}</h4>
               <span class="badge ${domClass}">${esc(t.dominio)}</span>
             </div>
-            <button class="icon-button" type="button" aria-label="Excluir tarefa"
-              data-action="excluir-tarefa" data-id="${esc(t.id)}">×</button>
+            ${podeEditar() ? `<button class="icon-button" type="button" aria-label="Excluir tarefa" data-action="excluir-tarefa" data-id="${esc(t.id)}">×</button>` : ''}
           </article>
         `).join('')
       : '<p class="muted">Sem tarefas neste domínio.</p>';
@@ -1017,8 +1673,8 @@ function renderSemana() {
   const btnNova    = document.querySelector('#tab-semana .section-head .btn-primary');
   const btnNovaSeq = document.querySelector('#tab-semana .section-head .btn:not(.btn-primary)');
 
-  if (btnNova)    btnNova.onclick    = () => abrirModalTarefa(null);
-  if (btnNovaSeq) btnNovaSeq.onclick = () => novaSemana();
+  if (btnNova)    { btnNova.style.display    = podeEditar() ? '' : 'none'; if (podeEditar()) btnNova.onclick    = () => abrirModalTarefa(null); }
+  if (btnNovaSeq) { btnNovaSeq.style.display = podeEditar() ? '' : 'none'; if (podeEditar()) btnNovaSeq.onclick = () => novaSemana(); }
 }
 
 function onClickSemana(e) {
@@ -1122,8 +1778,8 @@ function renderEquipe() {
   // Seletores com .section-head para não pegar botões dos cards renderizados
   const btnPessoa = document.querySelector('#tab-equipe .section-head .btn-primary');
   const btnLacuna = document.querySelector('#tab-equipe .section-head .btn:not(.btn-primary)');
-  if (btnPessoa) btnPessoa.onclick = () => abrirModalPessoa(null);
-  if (btnLacuna) btnLacuna.onclick = () => abrirModalLacuna(null);
+  if (btnPessoa) { btnPessoa.style.display = podeEditar() ? '' : 'none'; if (podeEditar()) btnPessoa.onclick = () => abrirModalPessoa(null); }
+  if (btnLacuna) { btnLacuna.style.display = podeEditar() ? '' : 'none'; if (podeEditar()) btnLacuna.onclick = () => abrirModalLacuna(null); }
 }
 
 function renderContadoresEquipe() {
@@ -1161,14 +1817,16 @@ function renderPessoas() {
                   <div class="person-top">
                     <div>
                       <h4 class="person-name">${esc(p.nome)}</h4>
-                      <p class="person-role">${esc(p.funcao)}</p>
+                      <p class="person-role"><span class="person-field-label">Função:</span> ${esc(p.funcao)}</p>
+                      ${p.capacidade ? `<p class="person-role person-capacity"><span class="person-field-label">Capacidade:</span> ${esc(p.capacidade)}</p>` : ''}
                     </div>
                     <span class="badge ${sc} clickable" data-action="status-pessoa" data-id="${esc(p.id)}">${esc(p.status)}</span>
                   </div>
+                  ${podeEditar() ? `
                   <div class="person-actions">
                     <button class="btn" type="button" data-action="editar-pessoa" data-id="${esc(p.id)}">Editar</button>
                     <button class="btn btn-danger" type="button" data-action="excluir-pessoa" data-id="${esc(p.id)}">Excluir</button>
-                  </div>
+                  </div>` : ''}
                 </div>
               </article>
             `;
@@ -1245,8 +1903,12 @@ function abrirModalPessoa(id) {
       <input class="form-control" name="iniciais" type="text" maxlength="3" value="${esc(pessoa?.iniciais || '')}" id="input-iniciais-pessoa">
     </div>
     <div class="form-group">
-      <label class="form-label">Função / Habilidades</label>
+      <label class="form-label">Função atual</label>
       <textarea class="form-control" name="funcao">${esc(pessoa?.funcao || '')}</textarea>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Capacidade disponível</label>
+      <textarea class="form-control" name="capacidade">${esc(pessoa?.capacidade || '')}</textarea>
     </div>
     <div class="form-group">
       <label class="form-label">Status</label>
@@ -1261,13 +1923,14 @@ function abrirModalPessoa(id) {
     const iniciais = dados.iniciais.trim() || gerarIniciais(dados.nome);
 
     if (pessoa) {
-      Object.assign(pessoa, { nome: dados.nome.trim(), iniciais, funcao: dados.funcao.trim(), status: dados.status });
+      Object.assign(pessoa, { nome: dados.nome.trim(), iniciais, funcao: dados.funcao.trim(), capacidade: dados.capacidade.trim(), status: dados.status });
     } else {
       db.equipe.push({
         id: crypto.randomUUID(),
         nome: dados.nome.trim(),
         iniciais,
         funcao: dados.funcao.trim(),
+        capacidade: dados.capacidade.trim(),
         status: dados.status,
       });
     }
@@ -1323,10 +1986,11 @@ function renderLacunas() {
         <div class="gap-progress-bar">
           <div class="gap-progress-fill" style="width:${pct}%"></div>
         </div>
+        ${podeEditar() ? `
         <div class="card-actions">
           <button class="btn" type="button" data-action="editar-lacuna" data-id="${esc(l.id)}">Editar</button>
           <button class="btn btn-danger" type="button" data-action="excluir-lacuna" data-id="${esc(l.id)}">Excluir</button>
-        </div>
+        </div>` : ''}
       </article>
     `;
   }).join('');
@@ -1443,8 +2107,9 @@ function renderEventos() {
           <div class="event-meta">
             <span class="badge ${urg.statusClass}">${esc(urg.texto || `${MESES[ev.mes - 1]} ${ev.ano}`)}</span>
             <span class="badge">${ev.ano}</span>
+            ${podeEditar() ? `
             <button class="btn" type="button" style="margin-left:auto" data-action="editar-evento" data-id="${esc(ev.id)}">Editar</button>
-            <button class="btn btn-danger" type="button" data-action="excluir-evento" data-id="${esc(ev.id)}">Excluir</button>
+            <button class="btn btn-danger" type="button" data-action="excluir-evento" data-id="${esc(ev.id)}">Excluir</button>` : ''}
           </div>
         </div>
       </article>
@@ -1453,7 +2118,10 @@ function renderEventos() {
 
   // Botão Novo evento (section-head para não conflitar com outros botões)
   const btnNovo = document.querySelector('#tab-eventos .section-head .btn-primary');
-  if (btnNovo) btnNovo.onclick = () => abrirModalEvento(null);
+  if (btnNovo) {
+    btnNovo.style.display = podeEditar() ? '' : 'none';
+    if (podeEditar()) btnNovo.onclick = () => abrirModalEvento(null);
+  }
 
   lista.onclick = e => {
     const btn = e.target.closest('[data-action]');
@@ -1532,7 +2200,302 @@ function excluirEvento(id) {
 }
 
 // ─────────────────────────────────────────────
-// 11. CABEÇALHO DINÂMICO
+// 11. ABA USUÁRIOS (admin only)
+// ─────────────────────────────────────────────
+
+async function renderUsuarios() {
+  const lista = document.getElementById('user-list');
+  if (!lista) return;
+
+  lista.innerHTML = '<p class="muted" style="padding:12px">Carregando...</p>';
+
+  const { data: usuarios, error } = await window._sb
+    .from('usuarios')
+    .select('*')
+    .order('nome');
+
+  if (error) {
+    lista.innerHTML = `<p class="muted" style="padding:12px">Erro ao carregar usuários: ${esc(error.message)}</p>`;
+    return;
+  }
+
+  if (!usuarios || usuarios.length === 0) {
+    lista.innerHTML = '<p class="muted" style="padding:12px">Nenhum usuário cadastrado.</p>';
+  } else {
+    lista.innerHTML = usuarios.map(u => {
+      const isAdmin     = u.papel === 'admin';
+      const borderColor = isAdmin ? '#7c6af7' : '#3b82f6';
+      const papelClass  = isAdmin ? 'badge-admin' : 'badge-visualizador';
+
+      const contasNomes = u.contas_permitidas
+        ? u.contas_permitidas.split(',').map(raw => {
+            const conta = db.contas.find(c => c.id === raw.trim());
+            return conta ? esc(conta.nome) : `ID:${esc(raw.trim())}`;
+          }).join(' · ')
+        : '<span class="muted" style="font-style:italic">Todas as contas</span>';
+
+      return `
+        <article class="user-card" data-id="${esc(u.id)}" style="border-left-color:${borderColor}">
+          <div class="user-card-top">
+            <div>
+              <h4 class="user-name">${esc(u.nome)}</h4>
+              <p class="user-email">${esc(u.email)}</p>
+            </div>
+            <span class="badge ${papelClass}">${esc(u.papel)}</span>
+          </div>
+          <p class="user-contas">${contasNomes}</p>
+          <div class="card-actions">
+            <button class="btn" type="button" data-action="editar-usuario" data-id="${esc(u.id)}">Editar</button>
+            <button class="btn btn-danger" type="button" data-action="excluir-usuario" data-id="${esc(u.id)}">Excluir</button>
+          </div>
+        </article>
+      `;
+    }).join('');
+
+    lista.onclick = e => {
+      const btn = e.target.closest('[data-action]');
+      if (!btn) return;
+      const { action, id } = btn.dataset;
+      if (action === 'editar-usuario')  abrirModalUsuario(id, usuarios);
+      if (action === 'excluir-usuario') excluirUsuario(id);
+    };
+  }
+
+  const btnNovo = document.getElementById('btn-novo-usuario');
+  if (btnNovo) btnNovo.onclick = () => abrirModalUsuario(null, usuarios || []);
+}
+
+function abrirModalUsuario(id, usuarios) {
+  const usuario = id ? usuarios.find(u => u.id === id) : null;
+  const titulo  = usuario ? 'Editar usuário' : 'Adicionar usuário';
+
+  const contasAtuais = usuario?.contas_permitidas
+    ? usuario.contas_permitidas.split(',').map(s => s.trim())
+    : [];
+
+  const checkboxesContas = db.contas.map(c => `
+    <label class="checkbox-label">
+      <input type="checkbox" name="conta_${esc(c.id)}" value="${esc(c.id)}"
+        ${contasAtuais.includes(c.id) ? 'checked' : ''}>
+      ${esc(c.nome)}
+    </label>
+  `).join('');
+
+  const corpo = `
+    <div class="form-group">
+      <label class="form-label">Nome</label>
+      <input class="form-control" name="nome" type="text" value="${esc(usuario?.nome || '')}" required>
+    </div>
+    <div class="form-group">
+      <label class="form-label">E-mail</label>
+      <input class="form-control" name="email" type="email" value="${esc(usuario?.email || '')}"
+        ${usuario ? 'readonly style="opacity:0.5;cursor:not-allowed"' : ''} required>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Papel</label>
+      <select class="form-control" name="papel">
+        <option value="visualizador" ${(usuario?.papel ?? 'visualizador') !== 'admin' ? 'selected' : ''}>visualizador</option>
+        <option value="admin" ${usuario?.papel === 'admin' ? 'selected' : ''}>admin</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Contas permitidas <span style="color:#6b6b7a;font-weight:400">(nenhuma selecionada = todas)</span></label>
+      <div class="checkbox-group">${checkboxesContas}</div>
+    </div>
+    ${!usuario ? '<p class="form-hint">Um convite será enviado para o e-mail informado após a criação.</p>' : ''}
+  `;
+
+  abrirModal(titulo, corpo, async form => {
+    const dados = Object.fromEntries(new FormData(form));
+    if (!dados.nome.trim())  { alert('Nome é obrigatório.');   return; }
+    if (!dados.email.trim()) { alert('E-mail é obrigatório.'); return; }
+
+    const contasSelecionadas = db.contas
+      .filter(c => form.querySelector(`[name="conta_${c.id}"]`)?.checked)
+      .map(c => c.id)
+      .join(',');
+
+    const payload = {
+      nome:              dados.nome.trim(),
+      email:             dados.email.trim().toLowerCase(),
+      papel:             dados.papel,
+      contas_permitidas: contasSelecionadas,
+    };
+
+    if (usuario) {
+      const { error } = await window._sb.from('usuarios').update(payload).eq('id', id);
+      if (error) { alert('Erro ao salvar: ' + error.message); return; }
+    } else {
+      const { error: errInsert } = await window._sb.from('usuarios').insert(payload);
+      if (errInsert) { alert('Erro ao criar usuário: ' + errInsert.message); return; }
+
+      // Convite via Supabase Auth (requer service role key configurada no cliente)
+      const { error: errInvite } = await window._sb.auth.admin.inviteUserByEmail(payload.email);
+      if (errInvite) {
+        alert(
+          `Usuário criado na tabela, mas o convite por e-mail falhou.\n\n` +
+          `Motivo: ${errInvite.message}\n\n` +
+          `Dica: invites requerem a service role key do Supabase (não a anon key).`
+        );
+      }
+    }
+
+    fecharModal();
+    renderUsuarios();
+  }, {
+    mostrarExcluir: !!usuario,
+    onExcluir:      () => excluirUsuario(id),
+    labelSalvar:    usuario ? 'Salvar' : 'Criar e convidar',
+  });
+}
+
+async function excluirUsuario(id) {
+  if (!confirm('Excluir este usuário do painel?\n\nNota: o acesso no Supabase Auth não é removido automaticamente.')) return;
+  const { error } = await window._sb.from('usuarios').delete().eq('id', id);
+  if (error) { alert('Erro ao excluir: ' + error.message); return; }
+  renderUsuarios();
+}
+
+// ─────────────────────────────────────────────
+// 12. SIDEBAR DE VISUALIZAÇÃO DE POST
+// ─────────────────────────────────────────────
+
+function fecharSidebar() {
+  const overlay = document.getElementById('sidebar-overlay');
+  if (!overlay) return;
+  const sb = overlay.querySelector('#post-sidebar');
+  if (sb) {
+    sb.classList.remove('sb-open');
+    setTimeout(() => overlay.remove(), 230);
+  } else {
+    overlay.remove();
+  }
+}
+
+function abrirSidebarPost(id) {
+  fecharSidebar();
+
+  const post  = db.posts.find(p => p.id === id);
+  if (!post) return;
+  const conta = getConta(post.contaid);
+  const cor   = conta?.cor || '#7c6af7';
+  const pc    = profileClass(post.contaid);
+  const sc    = statusClass(post.status);
+
+  const parsePipe    = str => (str || '').split('|').map(s => s.trim()).filter(Boolean);
+  const parseChecked = str => (str || '').split(',').map(Number).filter(n => !isNaN(n) && n >= 0);
+
+  const checklistItems  = parsePipe(post.checklistgravacao);
+  const timelineItems   = parsePipe(post.timelineproducao);
+  const chkGravacao     = parseChecked(post.checklistgravacaochecked);
+  const chkTimeline     = parseChecked(post.timelineproducaochecked);
+
+  const mkSection = (label, body, open = false) =>
+    body ? `
+      <details class="sb-section"${open ? ' open' : ''}>
+        <summary class="sb-section-title">${label}</summary>
+        <div class="sb-section-body">${body}</div>
+      </details>` : '';
+
+  const mkChecklist = (items, checked, field, label) =>
+    items.length ? `
+      <details class="sb-section" open>
+        <summary class="sb-section-title">${label}</summary>
+        <div class="sb-section-body sb-checklist">
+          ${items.map((item, i) => `
+            <label class="sb-check-label">
+              <input type="checkbox" class="sb-check" ${checked.includes(i) ? 'checked' : ''}
+                data-post-id="${esc(id)}" data-field="${field}" data-idx="${i}">
+              <span>${esc(item)}</span>
+            </label>`).join('')}
+        </div>
+      </details>` : '';
+
+  const overlay = document.createElement('div');
+  overlay.id = 'sidebar-overlay';
+  overlay.innerHTML = `
+    <aside id="post-sidebar">
+      <div class="sb-header" style="border-left-color:${esc(cor)}">
+        <div class="sb-header-top">
+          <div class="sb-header-meta">
+            <span class="badge ${pc}" style="background:${esc(cor)}22;border-color:${esc(cor)}55;color:${esc(cor)}">${esc(conta?.nome || 'Sem conta')}</span>
+            <span class="badge ${sc}">${esc(post.status)}</span>
+          </div>
+          <div class="sb-header-actions">
+            ${podeEditar() ? `<button class="btn btn-primary sb-editar-btn" id="sb-editar">Editar</button>` : ''}
+            <button class="icon-button" id="sb-fechar" aria-label="Fechar">×</button>
+          </div>
+        </div>
+        <h2 class="sb-titulo">${esc(post.titulo)}</h2>
+        <p class="sb-meta">${esc(capitalize(post.formato))}${post.pilar ? ' · ' + esc(post.pilar) : ''}${post.dataplanejada ? ' · ' + formatarData(post.dataplanejada) : ''}${post.horarioplanejado ? ' às ' + esc(post.horarioplanejado) : ''}</p>
+        ${post.responsavel ? `<p class="sb-responsavel">${esc(post.responsavel)}</p>` : ''}
+      </div>
+
+      <div class="sb-body">
+        ${mkSection('Conceito',
+            post.conceito ? `<p class="sb-text">${esc(post.conceito)}</p>` : '', true)}
+        ${mkSection('Roteiro',
+            post.roteiro ? `<pre class="sb-pre">${esc(post.roteiro)}</pre>` : '')}
+        ${mkSection('Direção de Edição',
+            post.direcaoedicao ? `<p class="sb-text">${esc(post.direcaoedicao)}</p>` : '')}
+        ${mkChecklist(checklistItems, chkGravacao, 'checklistgravacaochecked', 'Checklist de Gravação')}
+        ${mkChecklist(timelineItems,  chkTimeline,  'timelineproducaochecked',  'Timeline de Produção')}
+        ${mkSection('Legenda e Hashtags', (post.legenda || post.hashtags) ? `
+            ${post.legenda  ? `<p class="sb-text sb-legenda">${esc(post.legenda).replace(/\n/g,'<br>')}</p>` : ''}
+            ${post.hashtags ? `<p class="sb-hashtags">${esc(post.hashtags)}</p>` : ''}
+          ` : '')}
+        ${mkSection('Observações',
+            post.observacoes ? `<p class="sb-text">${esc(post.observacoes)}</p>` : '')}
+        ${post.linkarquivo
+            ? mkSection('Arquivo', `<a href="${esc(post.linkarquivo)}" target="_blank" rel="noopener" class="sb-link">Abrir arquivo ↗</a>`)
+            : ''}
+      </div>
+    </aside>
+  `;
+
+  document.body.appendChild(overlay);
+
+  requestAnimationFrame(() => {
+    overlay.querySelector('#post-sidebar').classList.add('sb-open');
+  });
+
+  overlay.addEventListener('click', e => { if (e.target === overlay) fecharSidebar(); });
+  overlay.querySelector('#sb-fechar').addEventListener('click', fecharSidebar);
+
+  if (podeEditar()) {
+    overlay.querySelector('#sb-editar')?.addEventListener('click', () => {
+      fecharSidebar();
+      abrirModalPost(id);
+    });
+  }
+
+  // Salva estado dos checkboxes no db
+  overlay.addEventListener('change', e => {
+    const chk = e.target.closest('.sb-check');
+    if (!chk) return;
+    const { postId, field, idx } = chk.dataset;
+    const p = db.posts.find(p => p.id === postId);
+    if (!p) return;
+    const arr = parseChecked(p[field]);
+    const i   = Number(idx);
+    if (chk.checked && !arr.includes(i)) arr.push(i);
+    if (!chk.checked) { const pos = arr.indexOf(i); if (pos > -1) arr.splice(pos, 1); }
+    arr.sort((a, b) => a - b);
+    p[field] = arr.join(',');
+    salvarDados(db); // cache imediato
+    // Supabase: fire-and-forget (apenas progresso de checklist)
+    if (window._sb) {
+      _sbEscritaPosts(() => window._sb.schema('public').from('posts').update({ [field]: p[field] }).eq('id', p.id))
+        .then(({ error }) => { if (error) console.warn('[Posts] Erro ao salvar checkbox:', error.message); });
+    }
+  });
+
+  const onKey = e => { if (e.key === 'Escape') { fecharSidebar(); document.removeEventListener('keydown', onKey); } };
+  document.addEventListener('keydown', onKey);
+}
+
+// ─────────────────────────────────────────────
+// 13. CABEÇALHO DINÂMICO
 // ─────────────────────────────────────────────
 
 function renderHeader() {
@@ -1543,10 +2506,14 @@ function renderHeader() {
 }
 
 // ─────────────────────────────────────────────
-// 12. INICIALIZAÇÃO
+// 14. INICIALIZAÇÃO
 // ─────────────────────────────────────────────
 
 function init() {
+  // Exibe aba Usuários apenas para admin
+  const tabBtnUsuarios = document.getElementById('tab-btn-usuarios');
+  if (tabBtnUsuarios) tabBtnUsuarios.style.display = podeEditar() ? '' : 'none';
+
   iniciarTabs();
   renderHeader();
   renderControle();
@@ -1554,6 +2521,7 @@ function init() {
   renderSemana();
   renderEquipe();
   renderEventos();
+  if (podeEditar()) renderUsuarios(); // async, fire-and-forget
 }
 
 // Aguarda o DOM estar pronto

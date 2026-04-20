@@ -8,9 +8,141 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
+  <style>
+    /* ── Tela de login ── */
+    #login-screen {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: #0c0c0e;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      z-index: 9999;
+    }
+    .login-card {
+      width: 100%;
+      max-width: 380px;
+      background: #141416;
+      border: 1px solid #2a2a30;
+      border-radius: 12px;
+      padding: 36px 32px 32px;
+      box-shadow: 0 24px 64px rgba(0,0,0,0.56);
+    }
+    .login-eyebrow {
+      display: block;
+      font-family: "JetBrains Mono", monospace;
+      font-size: 0.65rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: #7c6af7;
+      margin-bottom: 10px;
+    }
+    .login-title {
+      margin: 0 0 6px;
+      font-size: 1.35rem;
+      font-weight: 800;
+      color: #e8e8f0;
+      letter-spacing: -0.02em;
+    }
+    .login-subtitle {
+      margin: 0 0 28px;
+      font-size: 0.85rem;
+      color: #6b6b7a;
+    }
+    .login-field {
+      display: grid;
+      gap: 6px;
+      margin-bottom: 14px;
+    }
+    .login-field label {
+      font-size: 0.72rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #6b6b7a;
+    }
+    .login-field input {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid #2a2a30;
+      border-radius: 8px;
+      background: #0c0c0e;
+      color: #e8e8f0;
+      font-size: 0.9rem;
+      transition: border-color 0.15s;
+    }
+    .login-field input:focus {
+      outline: none;
+      border-color: #7c6af7;
+    }
+    .login-field input::placeholder { color: #3a3a44; }
+    .login-erro {
+      min-height: 18px;
+      margin: 0 0 12px;
+      font-size: 0.8rem;
+      color: #ef4444;
+    }
+    .login-submit {
+      width: 100%;
+      padding: 11px;
+      background: #7c6af7;
+      color: #fff;
+      font-size: 0.9rem;
+      font-weight: 700;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: opacity 0.15s;
+      letter-spacing: 0.01em;
+    }
+    .login-submit:hover  { opacity: 0.88; }
+    .login-submit:disabled { opacity: 0.5; cursor: default; }
+
+    /* ── Botão logout ── */
+    #btn-logout {
+      font-size: 0.72rem;
+      font-weight: 700;
+      font-family: "JetBrains Mono", monospace;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      padding: 5px 12px;
+      border: 1px solid #2a2a30;
+      border-radius: 20px;
+      background: transparent;
+      color: #6b6b7a;
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s;
+    }
+    #btn-logout:hover { border-color: #ef4444; color: #ef4444; }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
-  <main class="app-shell">
+
+  <!-- Tela de login -->
+  <div id="login-screen">
+    <div class="login-card">
+      <span class="login-eyebrow">Painel Operacional de Mídia</span>
+      <h1 class="login-title">Acesso restrito</h1>
+      <p class="login-subtitle">Entre com suas credenciais para continuar.</p>
+      <form id="login-form" novalidate>
+        <div class="login-field">
+          <label for="login-email">E-mail</label>
+          <input id="login-email" type="email" placeholder="seu@email.com" autocomplete="email" required>
+        </div>
+        <div class="login-field">
+          <label for="login-senha">Senha</label>
+          <input id="login-senha" type="password" placeholder="••••••••" autocomplete="current-password" required>
+        </div>
+        <p id="login-erro" class="login-erro" role="alert"></p>
+        <button id="login-btn" type="submit" class="login-submit">Entrar</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Painel principal (oculto até autenticação) -->
+  <main id="app-shell" class="app-shell" style="display:none">
     <header class="app-header">
       <div>
         <span class="eyebrow">Painel Operacional de Mídia</span>
@@ -20,6 +152,7 @@
       <div class="header-status" aria-label="Resumo rápido">
         <span class="header-pill">Abril 2026</span>
         <span class="header-pill">Base estática</span>
+        <button id="btn-logout" type="button" aria-label="Sair">Sair</button>
       </div>
     </header>
 
@@ -29,6 +162,7 @@
       <button class="tab" type="button" data-target="tab-semana">Semana</button>
       <button class="tab" type="button" data-target="tab-equipe">Equipe</button>
       <button class="tab" type="button" data-target="tab-eventos">Eventos</button>
+      <button class="tab" type="button" data-target="tab-usuarios" id="tab-btn-usuarios" style="display:none">Usuários</button>
     </nav>
 
     <!-- Aba 1: Torre de Controle -->
@@ -219,8 +353,14 @@
           <p class="section-copy">Calendário editorial de Abril de 2026 e fila estática de posts.</p>
         </div>
         <div class="actions">
+          <button class="btn" type="button" id="btn-importar-posts" style="display:none">Importar posts</button>
           <button class="btn btn-primary" type="button">Novo post</button>
         </div>
+      </div>
+
+      <div class="mobile-view-toggle" aria-label="Alternar visão">
+        <button class="toggle-btn active" type="button" data-view="calendario">Calendário</button>
+        <button class="toggle-btn" type="button" data-view="lista">Lista</button>
       </div>
 
       <div class="calendar-toolbar">
@@ -319,6 +459,8 @@
           <option>Publicado</option>
         </select>
       </div>
+
+      <div id="mobile-week-list" class="mobile-week-list"></div>
 
       <div id="post-list" class="post-list">
         <article class="post-item status-rascunho" data-id="p1">
@@ -871,9 +1013,24 @@
       </aside>
     </section>
 
+    <!-- Aba 6: Usuários (admin only) -->
+    <section id="tab-usuarios" class="view" aria-labelledby="usuarios-title">
+      <div class="section-head">
+        <div>
+          <h2 id="usuarios-title" class="section-title">Usuários</h2>
+          <p class="section-copy">Membros com acesso ao painel e suas permissões.</p>
+        </div>
+        <div class="actions">
+          <button class="btn btn-primary" type="button" id="btn-novo-usuario">Adicionar usuário</button>
+        </div>
+      </div>
+      <div id="user-list" class="user-list"></div>
+    </section>
+
   </main>
 
   <script src="data.js"></script>
   <script src="app.js"></script>
+  <script src="auth.js"></script>
 </body>
 </html>

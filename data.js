@@ -1368,15 +1368,15 @@ const SEED_DATA = {
   ],
 
   equipe: [
-    { id: 'e1', nome: 'Daniel Pires', iniciais: 'DP', funcao: 'Coordenação geral · Projeção domingo · Design · Photoshop · Canva · Holyrics', status: 'ativo' },
-    { id: 'e2', nome: 'Janete Felix', iniciais: 'JF', funcao: 'Projeção terça e quinta', status: 'ativo' },
-    { id: 'e3', nome: 'Francis Pinheiro', iniciais: 'FP', funcao: 'Projeção eventual · Reserva geral · Não sobrecarregar', status: 'eventual' },
-    { id: 'e4', nome: 'Luiz André', iniciais: 'LA', funcao: 'Design remoto · Photoshop · Precisa de templates prontos', status: 'parcial' },
-    { id: 'e5', nome: 'Aline Pinheiro', iniciais: 'AP', funcao: 'Fotografia · Disponibilidade parcial', status: 'parcial' },
-    { id: 'e6', nome: 'Emanuelly Oliveira', iniciais: 'EO', funcao: 'Vídeo vertical + edição · Função a definir', status: 'ativo' },
-    { id: 'e7', nome: 'Rayssa Vitória', iniciais: 'RV', funcao: 'Design Canva · Melhor com templates prontos', status: 'confirmar' },
-    { id: 'e8', nome: 'Maysa Hellen', iniciais: 'MH', funcao: 'Design remoto · Photoshop · Grávida — trabalho limitado', status: 'limitado' },
-    { id: 'e9', nome: 'Samara Alves', iniciais: 'SA', funcao: 'Vídeo vertical · Stories ao vivo · Retorno indefinido', status: 'limitado' }
+    { id: 'e1', nome: 'Daniel Pires',      iniciais: 'DP', funcao: 'Coordenação geral · Projeção domingo · Design',              capacidade: 'Photoshop · Canva · Holyrics · Edição foto e vídeo · Estratégia', status: 'ativo' },
+    { id: 'e2', nome: 'Janete Felix',       iniciais: 'JF', funcao: 'Projeção terça e quinta',                                     capacidade: 'Projeção · Canva gratuito (a desenvolver)',                          status: 'ativo' },
+    { id: 'e3', nome: 'Francis Pinheiro',   iniciais: 'FP', funcao: 'Reserva de projeção',                                         capacidade: 'Projeção',                                                           status: 'eventual' },
+    { id: 'e4', nome: 'Luiz André',         iniciais: 'LA', funcao: 'Reserva projeção domingo',                                    capacidade: 'Design remoto · Photoshop · Projeção',                               status: 'parcial' },
+    { id: 'e5', nome: 'Aline Pinheiro',     iniciais: 'AP', funcao: 'Fotografia',                                                  capacidade: 'Fotografia',                                                         status: 'parcial' },
+    { id: 'e6', nome: 'Emanuelly Oliveira', iniciais: 'EO', funcao: 'Responsável Vocal Renascer · Gravação · Edição eventual',     capacidade: 'Vídeo vertical · Edição · Gravação',                                 status: 'ativo' },
+    { id: 'e7', nome: 'Rayssa Vitória',     iniciais: 'RV', funcao: 'A confirmar',                                                 capacidade: 'Design Canva',                                                       status: 'confirmar' },
+    { id: 'e8', nome: 'Maysa Hellen',       iniciais: 'MH', funcao: 'Design remoto',                                               capacidade: 'Photoshop (trabalho limitado)',                                       status: 'limitado' },
+    { id: 'e9', nome: 'Samara Alves',       iniciais: 'SA', funcao: 'Stories ao vivo',                                             capacidade: 'Vídeo vertical · Stories',                                           status: 'limitado' }
   ],
 
   lacunas: [
