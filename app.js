@@ -533,9 +533,10 @@ function renderControle() {
 }
 
 function renderContadores() {
-  const ativas   = db.contas.filter(c => c.status === 'ativo' || c.status === 'instável').length;
-  const travadas = db.contas.filter(c => c.status === 'travado').length;
-  const preinicio = db.contas.filter(c => c.status === 'estruturado' || c.status === 'aguardando').length;
+  const contas = contasVisiveis();
+  const ativas   = contas.filter(c => c.status === 'ativo' || c.status === 'instável').length;
+  const travadas = contas.filter(c => c.status === 'travado').length;
+  const preinicio = contas.filter(c => c.status === 'estruturado' || c.status === 'aguardando').length;
 
   const grid = document.querySelector('.stat-grid');
   if (!grid) return;
@@ -549,7 +550,7 @@ function renderContas() {
   const lista = document.getElementById('account-list');
   if (!lista) return;
 
-  lista.innerHTML = db.contas.map(conta => {
+  lista.innerHTML = contasVisiveis().map(conta => {
     const statusClass = `status-${conta.status.replace(/\s+/g, '-').replace('á','a').replace('é','e').replace('ú','u')}`;
     return `
       <article class="account-card ${statusClass}" data-id="${esc(conta.id)}" style="border-left-color: ${esc(conta.cor)}">
@@ -2307,7 +2308,20 @@ function renderEventos() {
   const lista = document.getElementById('event-list');
   if (!lista) return;
 
-  lista.innerHTML = db.eventos.map(ev => {
+  const u = window.USUARIO;
+  const semRestricao = !u || u.papel === 'admin' || !u.contasPermitidas || u.contasPermitidas.length === 0;
+  let eventosFiltrados;
+  if (semRestricao) {
+    eventosFiltrados = db.eventos;
+  } else {
+    const termos = contasVisiveis().flatMap(c => [c.nome, c.handle]).filter(Boolean);
+    eventosFiltrados = db.eventos.filter(ev =>
+      !ev.conjunto ||
+      termos.some(t => ev.conjunto === t || t.includes(ev.conjunto) || ev.conjunto.includes(t))
+    );
+  }
+
+  lista.innerHTML = eventosFiltrados.map(ev => {
     const urg = calcularUrgencia(ev.dia, ev.mes, ev.ano);
     const mesLabel = ev.mes ? MESES_CURTOS[ev.mes - 1] : String(ev.ano);
     const diaLabel = ev.dia ? String(ev.dia).padStart(2, '0') : '--';
