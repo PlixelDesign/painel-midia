@@ -74,7 +74,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   if (session) {
     await carregarPermissoes(session.user.email);
-    if (typeof carregarPostsSupabase === 'function') await carregarPostsSupabase();
+    if (typeof carregarPostsSupabase   === 'function') await carregarPostsSupabase();
+    if (typeof carregarTarefasSupabase === 'function') await carregarTarefasSupabase();
     if (typeof init === 'function') init();
     mostrarApp();
   } else {
@@ -103,7 +104,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       btn.textContent   = 'Entrar';
     } else {
       await carregarPermissoes(data.user.email);
-      if (typeof carregarPostsSupabase === 'function') await carregarPostsSupabase();
+      if (typeof carregarPostsSupabase   === 'function') await carregarPostsSupabase();
+    if (typeof carregarTarefasSupabase === 'function') await carregarTarefasSupabase();
       if (typeof init === 'function') init();
       mostrarApp();
     }

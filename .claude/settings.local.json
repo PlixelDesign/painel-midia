@@ -3,7 +3,9 @@
     "allow": [
       "Bash(npm install *)",
       "Bash(scoop install *)",
-      "Bash(supabase *)"
+      "Bash(supabase *)",
+      "Bash(node --check app.js)",
+      "Bash(node --check auth.js)"
     ]
   }
 }

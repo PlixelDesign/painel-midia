@@ -100,6 +100,31 @@ async function carregarPostsSupabase() {
   }
 }
 
+async function carregarTarefasSupabase() {
+  if (!window._sb) return;
+  try {
+    const { data, error } = await window._sb
+      .from('tarefas')
+      .select('*')
+      .order('created_at');
+
+    if (error) { console.error('[Tarefas] Erro ao carregar:', error.message); return; }
+
+    db.tarefas = (data || []).map(t => ({
+      id:        t.id,
+      titulo:    t.titulo   || '',
+      dominio:   (t.dominio || 'OUTRO').toUpperCase(),
+      contaid:   t.contaid  || '',
+      concluida: t.concluida ?? false,
+    }));
+
+    salvarDados(db);
+    console.log(`[Tarefas] ${db.tarefas.length} tarefas carregadas do Supabase.`);
+  } catch (e) {
+    console.error('[Tarefas] Exceção ao carregar:', e.message);
+  }
+}
+
 // ── Helper de escrita com verificação de sessão ───────────────
 
 async function _aguardarSessao(tentativas = 10, intervalo = 500) {
@@ -134,6 +159,22 @@ async function _sbEscritaPosts(fn) {
   if (resultado?.error) {
     console.error('[Posts] Erro Supabase (completo):', JSON.stringify(resultado.error, null, 2));
   }
+  return resultado;
+}
+
+async function _sbEscritaTarefas(fn) {
+  const { data: { session } } = await window._sb.auth.getSession();
+  let sessaoAtiva = session;
+  if (!sessaoAtiva) {
+    console.warn('[Tarefas] Sessão não encontrada — aguardando…');
+    sessaoAtiva = await _aguardarSessao();
+  }
+  if (!sessaoAtiva) {
+    console.error('[Tarefas] Abortando — sem sessão ativa.');
+    return { error: { message: 'Sem sessão ativa.' } };
+  }
+  const resultado = await fn();
+  if (resultado?.error) console.error('[Tarefas] Erro Supabase:', JSON.stringify(resultado.error, null, 2));
   return resultado;
 }
 
@@ -529,7 +570,41 @@ function iniciarTabs() {
 
 function renderControle() {
   renderContadores();
+  renderProximoEvento();
   renderContas();
+}
+
+function renderProximoEvento() {
+  let bloco = document.getElementById('proximo-evento-bloco');
+  if (!bloco) return;
+
+  const hoje = new Date();
+  hoje.setHours(0, 0, 0, 0);
+  const futuros = db.eventos
+    .filter(ev => ev.dia && ev.mes)
+    .map(ev => ({ ev, data: new Date(ev.ano, ev.mes - 1, ev.dia) }))
+    .filter(({ data }) => data >= hoje)
+    .sort((a, b) => a.data - b.data);
+
+  if (futuros.length === 0) { bloco.style.display = 'none'; return; }
+
+  const { ev, data } = futuros[0];
+  const urg = calcularUrgencia(ev.dia, ev.mes, ev.ano);
+  const diasSem = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+  const dataLabel = `${diasSem[data.getDay()]}, ${ev.dia} de ${MESES[ev.mes - 1]}`;
+
+  bloco.style.display = '';
+  bloco.innerHTML = `
+    <div class="proximo-evento-card">
+      <div class="proximo-evento-label">Próximo evento</div>
+      <div class="proximo-evento-info">
+        <span class="proximo-evento-nome">${esc(ev.nome)}</span>
+        <span class="proximo-evento-conjunto">${esc(ev.conjunto)}</span>
+        <span class="proximo-evento-data">${esc(dataLabel)}</span>
+        <span class="badge ${urg.statusClass}">${esc(urg.texto)}</span>
+      </div>
+    </div>
+  `;
 }
 
 function renderContadores() {
@@ -1337,12 +1412,21 @@ function avancarStatusPost(id) {
 
   if (next) {
     post.status = next;
+    const updateFields = { status: post.status };
+
+    if (next === 'aprovado') {
+      post.aprovadopor = window.USUARIO?.email || '';
+      post.aprovadoem  = new Date().toISOString();
+      updateFields.aprovadopor = post.aprovadopor;
+      updateFields.aprovadoem  = post.aprovadoem;
+    }
+
     salvarDados(db);
     renderCalendario();
     renderListaPosts();
     renderContadoresMes();
     if (window._sb) {
-      _sbEscritaPosts(() => window._sb.schema('public').from('posts').update({ status: post.status }).eq('id', id))
+      _sbEscritaPosts(() => window._sb.schema('public').from('posts').update(updateFields).eq('id', id))
         .then(({ error }) => { if (error) console.warn('[Posts] Erro ao avançar status:', error.message); });
     }
   }
@@ -1376,6 +1460,13 @@ function capitalize(str) {
 
 const FORMATOS   = ['feed', 'carrossel', 'reels', 'stories', 'outro'];
 const PILARES    = ['vida da igreja', 'ensino', 'evangelização', 'comunhão', 'diagnóstico', 'bastidor', 'portfólio', 'oferta', 'outro'];
+
+const CHECKLISTS_FORMATO = {
+  reels:     'Roteiro finalizado | Locação definida | Figurino aprovado | Equipamento carregado | Iluminação testada | Áudio testado | Gravar 3x cada take | Material revisado',
+  carrossel: 'Textos revisados | Paleta de cores definida | Fontes corretas | Logo incluído | Testar legibilidade mobile | Ordem dos slides correta | Exportar em JPEG/PNG | Nomear arquivos corretamente',
+  feed:      'Texto revisado | Proporção correta (1:1 ou 4:5) | Logo incluído | Testar legibilidade mobile | Exportar em alta resolução',
+  stories:   'Proporção 9:16 | Elementos fora da área de corte | Texto legível | CTA visível | Exportar em MP4 ou PNG',
+};
 const STATUS_POST = ['ideia', 'pré-produção', 'captação', 'edição', 'produzindo', 'revisando', 'aguardando aprovação', 'aprovado', 'agendado', 'publicado', 'cancelado', 'rascunho', 'em aprovação'];
 
 function _buildStatusOpts(formato, contaid, statusAtual) {
@@ -1525,7 +1616,17 @@ function abrirModalPost(id, dataPreenchida) {
       hashtags:          (dados.hashtags      || '').trim(),
       checklistgravacao: (dados.checklistgravacao || '').trim(),
       timelineproducao:  (dados.timelineproducao  || '').trim(),
+      iniciadoem:        post?.iniciadoem || '',
     };
+
+    // Registro automático de aprovação
+    if (campos.status === 'aprovado' && (!post || post.status !== 'aprovado')) {
+      campos.aprovadopor = window.USUARIO?.email || '';
+      campos.aprovadoem  = new Date().toISOString();
+    } else {
+      campos.aprovadopor = post?.aprovadopor || '';
+      campos.aprovadoem  = post?.aprovadoem  || '';
+    }
 
     if (post) {
       campos.checklistgravacaochecked = campos.checklistgravacao !== post.checklistgravacao
@@ -1573,13 +1674,41 @@ function abrirModalPost(id, dataPreenchida) {
     const selFormato = overlay.querySelector('[name="formato"]');
     const selConta   = overlay.querySelector('[name="contaid"]');
     const selStatus  = overlay.querySelector('[name="status"]');
+    const chkInput   = overlay.querySelector('[name="checklistgravacao"]');
     const _syncStatus = () => {
       if (!selFormato || !selConta || !selStatus) return;
       const cur = selStatus.value;
       selStatus.innerHTML = _buildStatusOpts(selFormato.value, selConta.value, cur);
     };
-    if (selFormato) selFormato.addEventListener('change', _syncStatus);
+
+    // Checklist padrão por formato
+    let _btnUsarPadrao = null;
+    const _preencherChecklist = (formato) => {
+      const padrao = CHECKLISTS_FORMATO[formato];
+      if (!padrao || !chkInput) return;
+      if (!chkInput.value.trim()) {
+        chkInput.value = padrao;
+      } else if (chkInput.value.trim() !== padrao) {
+        if (!_btnUsarPadrao) {
+          _btnUsarPadrao = document.createElement('button');
+          _btnUsarPadrao.type = 'button';
+          _btnUsarPadrao.className = 'btn';
+          _btnUsarPadrao.style.cssText = 'margin-top:6px;font-size:0.78rem';
+          _btnUsarPadrao.textContent = 'Usar padrão do formato';
+          chkInput.parentElement.appendChild(_btnUsarPadrao);
+          _btnUsarPadrao.addEventListener('click', () => {
+            chkInput.value = CHECKLISTS_FORMATO[selFormato?.value] || '';
+            _btnUsarPadrao.remove();
+            _btnUsarPadrao = null;
+          });
+        }
+      }
+    };
+
+    if (selFormato) selFormato.addEventListener('change', () => { _syncStatus(); if (_btnUsarPadrao) { _btnUsarPadrao.remove(); _btnUsarPadrao = null; } _preencherChecklist(selFormato.value); });
     if (selConta)   selConta.addEventListener('change', _syncStatus);
+    // Novo post: preenche checklist com padrão do formato inicial
+    if (!id && selFormato) _preencherChecklist(selFormato.value);
 
     overlay.querySelectorAll('.auto-resize').forEach(ta => {
       ta.style.height = 'auto';
@@ -1846,10 +1975,18 @@ function renderSemana() {
   const container = document.getElementById('week-tasks');
   if (!container) return;
 
+  // Filtrar tarefas por conta para visualizadores restritos
+  const _u = window.USUARIO;
+  const _semRestricaoT = !_u || _u.papel === 'admin' || !_u.contasPermitidas || _u.contasPermitidas.length === 0;
+  const _idsVisiveisT = _semRestricaoT ? null : contasVisiveis().map(c => c.id);
+  const tarefasFiltradas = _idsVisiveisT === null
+    ? db.tarefas
+    : db.tarefas.filter(t => !t.contaid || _idsVisiveisT.includes(t.contaid));
+
   // Agrupar tarefas por domínio
   const grupos = {};
   DOMINIOS.forEach(d => { grupos[d] = []; });
-  db.tarefas.forEach(t => {
+  tarefasFiltradas.forEach(t => {
     const dom = t.dominio.toUpperCase();
     if (!grupos[dom]) grupos[dom] = [];
     grupos[dom].push(t);
@@ -1865,7 +2002,10 @@ function renderSemana() {
               aria-label="${esc(t.titulo)}" data-action="toggle-tarefa" data-id="${esc(t.id)}">
             <div class="task-content">
               <h4 class="task-title">${esc(t.titulo)}</h4>
-              <span class="badge ${domClass}">${esc(t.dominio)}</span>
+              <div class="task-badges">
+                <span class="badge ${domClass}">${esc(t.dominio)}</span>
+                ${t.contaid ? (() => { const _c = getConta(t.contaid); return _c ? `<span class="badge" style="background:${esc(_c.cor)}22;border-color:${esc(_c.cor)}55;color:${esc(_c.cor)}">${esc(_c.nome)}</span>` : ''; })() : ''}
+              </div>
             </div>
             ${podeEditar() ? `<button class="icon-button" type="button" aria-label="Excluir tarefa" data-action="excluir-tarefa" data-id="${esc(t.id)}">×</button>` : ''}
           </article>
@@ -1908,11 +2048,14 @@ function onChangeSemana(e) {
 
 function toggleTarefa(id) {
   const t = db.tarefas.find(t => t.id === id);
-  if (t) {
-    t.concluida = !t.concluida;
-    salvarDados(db);
-    renderSemana();
-    atualizarBadgeTarefas();
+  if (!t) return;
+  t.concluida = !t.concluida;
+  salvarDados(db);
+  renderSemana();
+  atualizarBadgeTarefas();
+  if (window._sb) {
+    _sbEscritaTarefas(() => window._sb.from('tarefas').update({ concluida: t.concluida }).eq('id', id))
+      .then(({ error }) => { if (error) console.warn('[Tarefas] Erro ao salvar toggle:', error.message); });
   }
 }
 
@@ -1921,15 +2064,24 @@ function excluirTarefa(id) {
   db.tarefas = db.tarefas.filter(t => t.id !== id);
   salvarDados(db);
   renderSemana();
+  if (window._sb) {
+    _sbEscritaTarefas(() => window._sb.from('tarefas').delete().eq('id', id))
+      .then(({ error }) => { if (error) console.warn('[Tarefas] Erro ao excluir tarefa:', error.message); });
+  }
 }
 
 function novaSemana() {
   const concluidas = db.tarefas.filter(t => t.concluida).length;
   if (concluidas === 0) { alert('Nenhuma tarefa concluída para remover.'); return; }
   if (!confirm(`Remover ${concluidas} tarefa(s) concluída(s) e iniciar nova semana?`)) return;
+  const idsRemover = db.tarefas.filter(t => t.concluida).map(t => t.id);
   db.tarefas = db.tarefas.filter(t => !t.concluida);
   salvarDados(db);
   renderSemana();
+  if (window._sb && idsRemover.length > 0) {
+    _sbEscritaTarefas(() => window._sb.from('tarefas').delete().in('id', idsRemover))
+      .then(({ error }) => { if (error) console.warn('[Tarefas] Erro ao limpar semana:', error.message); });
+  }
 }
 
 function abrirModalTarefa(id) {
@@ -1940,6 +2092,9 @@ function abrirModalTarefa(id) {
     `<option value="${d}" ${tarefa?.dominio === d ? 'selected' : ''}>${d}</option>`
   ).join('');
 
+  const contaOpts = `<option value="">Geral (todos veem)</option>` +
+    db.contas.map(c => `<option value="${esc(c.id)}" ${tarefa?.contaid === c.id ? 'selected' : ''}>${esc(c.nome)}</option>`).join('');
+
   const corpo = `
     <div class="form-group">
       <label class="form-label">Título</label>
@@ -1949,28 +2104,51 @@ function abrirModalTarefa(id) {
       <label class="form-label">Domínio</label>
       <select class="form-control" name="dominio">${domOpts}</select>
     </div>
+    <div class="form-group">
+      <label class="form-label">Conta relacionada</label>
+      <select class="form-control" name="contaid">${contaOpts}</select>
+    </div>
   `;
 
-  abrirModal(titulo, corpo, form => {
+  abrirModal(titulo, corpo, async form => {
     const dados = Object.fromEntries(new FormData(form));
     if (!dados.titulo.trim()) { alert('Título é obrigatório.'); return; }
 
     if (tarefa) {
-      Object.assign(tarefa, { titulo: dados.titulo.trim(), dominio: dados.dominio });
+      const campos = { titulo: dados.titulo.trim(), dominio: dados.dominio, contaid: dados.contaid || '' };
+      if (window._sb) {
+        const { error } = await _sbEscritaTarefas(() => window._sb.from('tarefas').update(campos).eq('id', id));
+        if (error) { alert('Erro ao salvar tarefa: ' + error.message); return; }
+      }
+      Object.assign(tarefa, campos);
     } else {
-      db.tarefas.push({
+      const novaTarefa = {
         id: crypto.randomUUID(),
         titulo: dados.titulo.trim(),
         dominio: dados.dominio,
+        contaid: dados.contaid || '',
         concluida: false,
-      });
+      };
+      if (window._sb) {
+        const { error } = await _sbEscritaTarefas(() => window._sb.from('tarefas').insert(novaTarefa));
+        if (error) { alert('Erro ao criar tarefa: ' + error.message); return; }
+      }
+      db.tarefas.push(novaTarefa);
     }
     salvarDados(db);
     fecharModal();
     renderSemana();
   }, {
     mostrarExcluir: !!tarefa,
-    onExcluir: () => { excluirTarefa(id); },
+    onExcluir: async () => {
+      if (window._sb) {
+        const { error } = await _sbEscritaTarefas(() => window._sb.from('tarefas').delete().eq('id', id));
+        if (error) { alert('Erro ao excluir tarefa: ' + error.message); return; }
+      }
+      db.tarefas = db.tarefas.filter(t => t.id !== id);
+      salvarDados(db);
+      renderSemana();
+    },
   });
 }
 
@@ -2036,7 +2214,7 @@ function renderPessoas() {
                     <div>
                       <h4 class="person-name">${esc(p.nome)}</h4>
                       <p class="person-role"><span class="person-field-label">Função:</span> ${esc(p.funcao)}</p>
-                      ${p.capacidade ? `<p class="person-role person-capacity"><span class="person-field-label">Capacidade:</span> ${esc(p.capacidade)}</p>` : ''}
+                      ${podeEditar() && p.capacidade ? `<p class="person-role person-capacity"><span class="person-field-label">Capacidade:</span> ${esc(p.capacidade)}</p>` : ''}
                     </div>
                     <span class="badge ${sc} clickable" data-action="status-pessoa" data-id="${esc(p.id)}">${esc(p.status)}</span>
                   </div>
@@ -2658,6 +2836,7 @@ function abrirSidebarPost(id) {
             <span class="badge ${sc}">${esc(post.status)}</span>
           </div>
           <div class="sb-header-actions">
+            ${post.status === 'ideia' && podeEditar() ? `<button class="btn" id="sb-iniciar-producao" type="button">Iniciar produção</button>` : ''}
             ${podeEditar() ? `<button class="btn btn-primary sb-editar-btn" id="sb-editar">Editar</button>` : ''}
             <button class="icon-button" id="sb-fechar" aria-label="Fechar">×</button>
           </div>
@@ -2669,6 +2848,8 @@ function abrirSidebarPost(id) {
 
       <div class="sb-body">
         ${isAtrasado(post) ? '<div class="sb-aviso-atrasado">⚠ Este post está atrasado</div>' : ''}
+        ${post.iniciadoem ? `<p class="sb-info-item">Em produção desde ${esc(formatarData(post.iniciadoem.slice(0,10)))}</p>` : ''}
+        ${post.aprovadopor ? `<p class="sb-info-item sb-aprovado">Aprovado por ${esc(post.aprovadopor)} em ${esc(formatarData((post.aprovadoem || '').slice(0,10)))}</p>` : ''}
         ${mkSection('Conceito',
             post.conceito ? `<p class="sb-text">${esc(post.conceito)}</p>` : '', true)}
         ${mkSection('Roteiro',
@@ -2703,6 +2884,28 @@ function abrirSidebarPost(id) {
     overlay.querySelector('#sb-editar')?.addEventListener('click', () => {
       fecharSidebar();
       abrirModalPost(id);
+    });
+
+    overlay.querySelector('#sb-iniciar-producao')?.addEventListener('click', async () => {
+      const p = db.posts.find(p => p.id === id);
+      if (!p || p.status !== 'ideia') return;
+      const _conta = getConta(p.contaid);
+      const _fluxo = getFluxoStatus(p.formato, _conta?.tipo);
+      const _idx   = _fluxo.indexOf('ideia');
+      const _next  = _idx !== -1 && _idx < _fluxo.length - 1 ? _fluxo[_idx + 1] : null;
+      if (!_next) return;
+      p.status     = _next;
+      p.iniciadoem = new Date().toISOString();
+      salvarDados(db);
+      renderCalendario();
+      renderListaPosts();
+      renderContadoresMes();
+      if (window._sb) {
+        await _sbEscritaPosts(() => window._sb.schema('public').from('posts')
+          .update({ status: p.status, iniciadoem: p.iniciadoem }).eq('id', id));
+      }
+      fecharSidebar();
+      abrirSidebarPost(id);
     });
   }
 
@@ -2742,6 +2945,42 @@ function renderHeader() {
   }
 }
 
+function mostrarBannerPostsProximos() {
+  if (document.getElementById('banner-posts-proximos')) return;
+
+  const hoje = hojeISO();
+  const d2 = new Date();
+  d2.setDate(d2.getDate() + 2);
+  const limiteISO = `${d2.getFullYear()}-${String(d2.getMonth()+1).padStart(2,'0')}-${String(d2.getDate()).padStart(2,'0')}`;
+
+  const idsVisiveis = contasVisiveis().map(c => c.id);
+  const proximos = db.posts.filter(p =>
+    p.dataplanejada &&
+    p.dataplanejada >= hoje &&
+    p.dataplanejada <= limiteISO &&
+    !['publicado', 'cancelado'].includes(p.status) &&
+    idsVisiveis.includes(p.contaid)
+  );
+
+  if (proximos.length === 0) return;
+
+  const banner = document.createElement('div');
+  banner.id = 'banner-posts-proximos';
+  banner.style.cssText = 'background:#f59e0b1a;border-bottom:1px solid #f59e0b44;color:#f59e0b;padding:9px 20px;display:flex;align-items:center;gap:12px;font-size:0.84rem;font-weight:500;cursor:pointer;user-select:none;';
+  banner.innerHTML = `
+    <span style="flex:1">⚠ ${proximos.length} post(s) publicam nos próximos 2 dias — clique para ver</span>
+    <button id="banner-fechar-btn" type="button" style="background:none;border:none;color:#f59e0b;font-size:1.2rem;cursor:pointer;padding:0 4px;line-height:1;opacity:0.75" aria-label="Fechar">×</button>
+  `;
+
+  const nav = document.querySelector('nav.tabs');
+  if (nav) nav.after(banner);
+
+  banner.addEventListener('click', e => {
+    if (e.target.closest('#banner-fechar-btn')) { banner.remove(); return; }
+    document.querySelector('[data-target="tab-conteudo"]')?.click();
+  });
+}
+
 // ─────────────────────────────────────────────
 // 14. INICIALIZAÇÃO
 // ─────────────────────────────────────────────
@@ -2758,6 +2997,7 @@ function init() {
   renderSemana();
   renderEquipe();
   renderEventos();
+  mostrarBannerPostsProximos();
   if (podeEditar()) renderUsuarios(); // async, fire-and-forget
 }
 

@@ -1590,3 +1590,71 @@ textarea.auto-resize { resize: none; overflow: hidden; min-height: 64px; }
   background: rgba(124, 106, 247, 0.1);
   border-color: rgba(124, 106, 247, 0.5);
 }
+
+/* ═══════════════════════════════════════════════
+   MELHORIAS — próximo evento, sidebar info, tarefas
+   ═══════════════════════════════════════════════ */
+
+/* Próximo evento — Torre de Controle */
+.proximo-evento-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 18px;
+  margin-bottom: 20px;
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  border-radius: var(--radius, 10px);
+  flex-wrap: wrap;
+}
+.proximo-evento-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #f59e0b;
+  white-space: nowrap;
+}
+.proximo-evento-nome {
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: #e8e8f0;
+}
+.proximo-evento-conjunto {
+  font-size: 0.82rem;
+  color: #9b9bae;
+}
+.proximo-evento-data {
+  font-size: 0.82rem;
+  color: #c4c4d0;
+  font-weight: 500;
+}
+.proximo-evento-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* Sidebar — info de produção e aprovação */
+.sb-info-item {
+  margin: 6px 20px 0;
+  padding: 7px 12px;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  background: rgba(107, 107, 122, 0.15);
+  color: #9b9bae;
+}
+.sb-info-item.sb-aprovado {
+  background: rgba(134, 239, 172, 0.1);
+  color: #86efac;
+}
+
+/* Task badges — múltiplos badges na tarefa */
+.task-badges {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
