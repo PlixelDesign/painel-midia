@@ -104,6 +104,7 @@ async function carregarTarefasSupabase() {
   if (!window._sb) return;
   try {
     const { data, error } = await window._sb
+      .schema('public')
       .from('tarefas')
       .select('*')
       .order('created_at');
@@ -1975,13 +1976,16 @@ function renderSemana() {
   const container = document.getElementById('week-tasks');
   if (!container) return;
 
-  // Filtrar tarefas por conta para visualizadores restritos
-  const _u = window.USUARIO;
-  const _semRestricaoT = !_u || _u.papel === 'admin' || !_u.contasPermitidas || _u.contasPermitidas.length === 0;
+  // Filtrar tarefas por conta e por papel
+  const _esAdmin = window.USUARIO?.papel === 'admin';
+  const _semRestricaoT = _esAdmin || !window.USUARIO?.contasPermitidas?.length;
   const _idsVisiveisT = _semRestricaoT ? null : contasVisiveis().map(c => c.id);
-  const tarefasFiltradas = _idsVisiveisT === null
+  const tarefasFiltradas = _esAdmin
     ? db.tarefas
-    : db.tarefas.filter(t => !t.contaid || _idsVisiveisT.includes(t.contaid));
+    : db.tarefas.filter(t =>
+        t.contaid !== '__admin__' &&
+        (!t.contaid || _idsVisiveisT === null || _idsVisiveisT.includes(t.contaid))
+      );
 
   // Agrupar tarefas por domínio
   const grupos = {};
@@ -2004,10 +2008,17 @@ function renderSemana() {
               <h4 class="task-title">${esc(t.titulo)}</h4>
               <div class="task-badges">
                 <span class="badge ${domClass}">${esc(t.dominio)}</span>
-                ${t.contaid ? (() => { const _c = getConta(t.contaid); return _c ? `<span class="badge" style="background:${esc(_c.cor)}22;border-color:${esc(_c.cor)}55;color:${esc(_c.cor)}">${esc(_c.nome)}</span>` : ''; })() : ''}
+                ${t.contaid === '__admin__'
+                  ? `<span class="badge status-travado">Admin</span>`
+                  : t.contaid
+                    ? (() => { const _c = getConta(t.contaid); return _c ? `<span class="badge" style="background:${esc(_c.cor)}22;border-color:${esc(_c.cor)}55;color:${esc(_c.cor)}">${esc(_c.nome)}</span>` : ''; })()
+                    : ''}
               </div>
             </div>
-            ${podeEditar() ? `<button class="icon-button" type="button" aria-label="Excluir tarefa" data-action="excluir-tarefa" data-id="${esc(t.id)}">×</button>` : ''}
+            ${podeEditar() ? `
+              <button class="icon-button" type="button" aria-label="Editar tarefa" data-action="editar-tarefa" data-id="${esc(t.id)}" style="opacity:0.6;font-size:0.9rem">✎</button>
+              <button class="icon-button" type="button" aria-label="Excluir tarefa" data-action="excluir-tarefa" data-id="${esc(t.id)}">×</button>
+            ` : ''}
           </article>
         `).join('')
       : '<p class="muted">Sem tarefas neste domínio.</p>';
@@ -2038,6 +2049,7 @@ function onClickSemana(e) {
   const btn = e.target.closest('[data-action]');
   if (!btn) return;
   if (btn.dataset.action === 'excluir-tarefa') excluirTarefa(btn.dataset.id);
+  if (btn.dataset.action === 'editar-tarefa')  abrirModalTarefa(btn.dataset.id);
 }
 
 function onChangeSemana(e) {
@@ -2054,7 +2066,7 @@ function toggleTarefa(id) {
   renderSemana();
   atualizarBadgeTarefas();
   if (window._sb) {
-    _sbEscritaTarefas(() => window._sb.from('tarefas').update({ concluida: t.concluida }).eq('id', id))
+    _sbEscritaTarefas(() => window._sb.schema('public').from('tarefas').update({ concluida: t.concluida }).eq('id', id))
       .then(({ error }) => { if (error) console.warn('[Tarefas] Erro ao salvar toggle:', error.message); });
   }
 }
@@ -2065,7 +2077,7 @@ function excluirTarefa(id) {
   salvarDados(db);
   renderSemana();
   if (window._sb) {
-    _sbEscritaTarefas(() => window._sb.from('tarefas').delete().eq('id', id))
+    _sbEscritaTarefas(() => window._sb.schema('public').from('tarefas').delete().eq('id', id))
       .then(({ error }) => { if (error) console.warn('[Tarefas] Erro ao excluir tarefa:', error.message); });
   }
 }
@@ -2079,7 +2091,7 @@ function novaSemana() {
   salvarDados(db);
   renderSemana();
   if (window._sb && idsRemover.length > 0) {
-    _sbEscritaTarefas(() => window._sb.from('tarefas').delete().in('id', idsRemover))
+    _sbEscritaTarefas(() => window._sb.schema('public').from('tarefas').delete().in('id', idsRemover))
       .then(({ error }) => { if (error) console.warn('[Tarefas] Erro ao limpar semana:', error.message); });
   }
 }
@@ -2092,7 +2104,9 @@ function abrirModalTarefa(id) {
     `<option value="${d}" ${tarefa?.dominio === d ? 'selected' : ''}>${d}</option>`
   ).join('');
 
-  const contaOpts = `<option value="">Geral (todos veem)</option>` +
+  const contaOpts =
+    `<option value="">Geral (todos veem)</option>` +
+    `<option value="__admin__" ${tarefa?.contaid === '__admin__' ? 'selected' : ''}>Apenas ADMIN pode ver</option>` +
     db.contas.map(c => `<option value="${esc(c.id)}" ${tarefa?.contaid === c.id ? 'selected' : ''}>${esc(c.nome)}</option>`).join('');
 
   const corpo = `
@@ -2117,7 +2131,7 @@ function abrirModalTarefa(id) {
     if (tarefa) {
       const campos = { titulo: dados.titulo.trim(), dominio: dados.dominio, contaid: dados.contaid || '' };
       if (window._sb) {
-        const { error } = await _sbEscritaTarefas(() => window._sb.from('tarefas').update(campos).eq('id', id));
+        const { error } = await _sbEscritaTarefas(() => window._sb.schema('public').from('tarefas').update(campos).eq('id', id));
         if (error) { alert('Erro ao salvar tarefa: ' + error.message); return; }
       }
       Object.assign(tarefa, campos);
@@ -2130,7 +2144,7 @@ function abrirModalTarefa(id) {
         concluida: false,
       };
       if (window._sb) {
-        const { error } = await _sbEscritaTarefas(() => window._sb.from('tarefas').insert(novaTarefa));
+        const { error } = await _sbEscritaTarefas(() => window._sb.schema('public').from('tarefas').insert(novaTarefa));
         if (error) { alert('Erro ao criar tarefa: ' + error.message); return; }
       }
       db.tarefas.push(novaTarefa);
@@ -2142,7 +2156,7 @@ function abrirModalTarefa(id) {
     mostrarExcluir: !!tarefa,
     onExcluir: async () => {
       if (window._sb) {
-        const { error } = await _sbEscritaTarefas(() => window._sb.from('tarefas').delete().eq('id', id));
+        const { error } = await _sbEscritaTarefas(() => window._sb.schema('public').from('tarefas').delete().eq('id', id));
         if (error) { alert('Erro ao excluir tarefa: ' + error.message); return; }
       }
       db.tarefas = db.tarefas.filter(t => t.id !== id);
