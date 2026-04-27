@@ -117,6 +117,8 @@ async function carregarTarefasSupabase() {
       dominio:   (t.dominio || 'OUTRO').toUpperCase(),
       contaid:   t.contaid  || '',
       concluida: t.concluida ?? false,
+      semana:    t.semana   || '',
+      arquivada: t.arquivada ?? false,
     }));
 
     salvarDados(db);
@@ -509,6 +511,15 @@ function fecharModal() {
     .post-item.is-cancelado .post-title { text-decoration: line-through; color: #6b6b7a; }
     .task-card.is-concluida { opacity: 0.45; }
     .task-card.is-concluida .task-title { text-decoration: line-through; }
+    .task-card.is-atrasada { border-left: 3px solid #ef444466; }
+    .task-card.is-arquivada { opacity: 0.35; }
+    .task-card.is-arquivada .task-title { text-decoration: line-through; color: #6b6b7a; }
+    /* ── Filtros de tarefas ── */
+    .tarefas-filtros-bar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 16px; padding: 12px 14px; background: #141416; border: 1px solid #2a2a30; border-radius: 8px; }
+    .semana-nav { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .semana-label { font-size: 0.8rem; white-space: nowrap; }
+    .tarefas-inline-filters { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-left: auto; }
+    .toggle-label { font-size: 0.8rem; color: #9999aa; display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; }
     .counter-row .badge { cursor: default; }
     .person-field-label { font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: #6b6b7a; margin-right: 2px; }
     .person-capacity { margin-top: 2px; }
@@ -1950,77 +1961,249 @@ async function _confirmarImport(posts, isDupArr) {
 }
 
 // ─────────────────────────────────────────────
-// 8. ABA ESTA SEMANA
+// 8. ABA TAREFAS
 // ─────────────────────────────────────────────
 
 const DOMINIOS = ['REUNIÃO', 'EQUIPE', 'CONTEÚDO', 'CULTO', 'OUTRO'];
 
+// ── Utilitários de semana ISO (Seg–Dom) ──────────────────────
+
+/** Retorna a chave YYYY-WW (semana ISO) que contém a data */
+function semanaKey(date) {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const day = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - day); // quinta-feira desta semana
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  const ww = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+  return `${d.getUTCFullYear()}-${String(ww).padStart(2, '0')}`;
+}
+
+function semanaAtual() { return semanaKey(new Date()); }
+
+/** Retorna { inicio: Date (seg), fim: Date (dom) } de uma semana YYYY-WW */
+function rangeSemana(key) {
+  const [year, ww] = key.split('-').map(Number);
+  const jan4 = new Date(Date.UTC(year, 0, 4));
+  const jan4Day = jan4.getUTCDay() || 7;
+  const seg = new Date(Date.UTC(year, 0, 4 + (1 - jan4Day) + (ww - 1) * 7));
+  const dom = new Date(seg);
+  dom.setUTCDate(seg.getUTCDate() + 6);
+  return { inicio: seg, fim: dom };
+}
+
+/** Navega delta semanas a partir de key */
+function navSemana(key, delta) {
+  const { inicio } = rangeSemana(key);
+  const nova = new Date(inicio);
+  nova.setUTCDate(nova.getUTCDate() + delta * 7);
+  return semanaKey(nova);
+}
+
+/** Formata range como "DD/MM a DD/MM" */
+function formatarRangeSemana(key) {
+  const { inicio, fim } = rangeSemana(key);
+  const fmt = d => `${String(d.getUTCDate()).padStart(2,'0')}/${String(d.getUTCMonth()+1).padStart(2,'0')}`;
+  return `${fmt(inicio)} a ${fmt(fim)}`;
+}
+
+// ── Estado de navegação/filtros da aba ───────────────────────
+
+const uiTarefas = {
+  semanaNav: null,          // YYYY-WW ou null (= semana atual)
+  dominio: 'TODOS',
+  contaId: '',
+  mostrarArquivadas: false,
+};
+
+function semanaExibida() { return uiTarefas.semanaNav || semanaAtual(); }
+
+// ── Badge de contagem na aba ─────────────────────────────────
+
 function atualizarBadgeTarefas() {
   const btn = document.querySelector('.tab[data-target="tab-semana"]');
   if (!btn) return;
-  const pendentes = db.tarefas.filter(t => !t.concluida).length;
+  const atual = semanaAtual();
+  const pendentes = db.tarefas.filter(t => {
+    if (t.arquivada) return false;
+    const sem = t.semana || atual;
+    if (sem === atual) return !t.concluida;
+    if (sem < atual)  return !t.concluida; // atrasada
+    return false;
+  }).length;
   let badge = btn.querySelector('.tab-badge');
-  if (pendentes === 0) {
-    if (badge) badge.remove();
-    return;
-  }
-  if (!badge) {
-    badge = document.createElement('span');
-    badge.className = 'tab-badge';
-    btn.appendChild(badge);
-  }
+  if (pendentes === 0) { if (badge) badge.remove(); return; }
+  if (!badge) { badge = document.createElement('span'); badge.className = 'tab-badge'; btn.appendChild(badge); }
   badge.textContent = pendentes > 99 ? '99+' : String(pendentes);
 }
 
+// ── Auto-arquivamento ────────────────────────────────────────
+
+function autoArquivar() {
+  const atual = semanaAtual();
+  const paraArquivar = db.tarefas.filter(t => !t.arquivada && t.concluida && t.semana && t.semana < atual);
+  if (paraArquivar.length === 0) return;
+  paraArquivar.forEach(t => { t.arquivada = true; });
+  salvarDados(db);
+  if (window._sb) {
+    const ids = paraArquivar.map(t => t.id);
+    _sbEscritaTarefas(() => window._sb.schema('public').from('tarefas').update({ arquivada: true }).in('id', ids))
+      .then(({ error }) => { if (error) console.warn('[Tarefas] Erro ao auto-arquivar:', error.message); });
+  }
+}
+
+// ── Render principal ─────────────────────────────────────────
+
 function renderSemana() {
+  autoArquivar();
+  renderFiltrosTarefas();
+  renderListaTarefas();
+}
+
+function renderFiltrosTarefas() {
+  const container = document.getElementById('tarefas-filtros');
+  if (!container) return;
+
+  const semExib = semanaExibida();
+  const isAtual = semExib === semanaAtual();
+
+  const contasDisp = podeEditar()
+    ? [{ id: '', nome: 'Todas as contas' }, ...db.contas]
+    : [{ id: '', nome: 'Todas as contas' }, ...contasVisiveis()];
+
+  container.innerHTML = `
+    <div class="tarefas-filtros-bar">
+      <div class="semana-nav">
+        <button class="icon-button" type="button" id="btn-semana-prev" aria-label="Semana anterior">←</button>
+        <span class="header-pill semana-label">${isAtual ? 'Semana atual: ' : ''}${formatarRangeSemana(semExib)}</span>
+        <button class="icon-button" type="button" id="btn-semana-next" aria-label="Próxima semana">→</button>
+        ${!isAtual ? `<button class="btn" type="button" id="btn-semana-hoje" style="font-size:0.72rem;padding:3px 10px">Hoje</button>` : ''}
+      </div>
+      <div class="tarefas-inline-filters">
+        <select class="select-control" id="filtro-tarefa-dominio" style="font-size:0.8rem;padding:5px 10px">
+          <option value="TODOS">Todos os domínios</option>
+          ${DOMINIOS.map(d => `<option value="${d}" ${uiTarefas.dominio === d ? 'selected' : ''}>${d}</option>`).join('')}
+        </select>
+        <select class="select-control" id="filtro-tarefa-conta" style="font-size:0.8rem;padding:5px 10px">
+          ${contasDisp.map(c => `<option value="${esc(c.id)}" ${uiTarefas.contaId === c.id ? 'selected' : ''}>${esc(c.nome)}</option>`).join('')}
+        </select>
+        <label class="toggle-label">
+          <input type="checkbox" id="toggle-arquivadas" ${uiTarefas.mostrarArquivadas ? 'checked' : ''}>
+          Incluir arquivadas
+        </label>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('btn-semana-prev').onclick = () => {
+    uiTarefas.semanaNav = navSemana(semExib, -1);
+    renderSemana();
+  };
+  document.getElementById('btn-semana-next').onclick = () => {
+    uiTarefas.semanaNav = navSemana(semExib, +1);
+    renderSemana();
+  };
+  const btnHoje = document.getElementById('btn-semana-hoje');
+  if (btnHoje) btnHoje.onclick = () => { uiTarefas.semanaNav = null; renderSemana(); };
+
+  document.getElementById('filtro-tarefa-dominio').onchange = e => {
+    uiTarefas.dominio = e.target.value;
+    renderListaTarefas();
+  };
+  document.getElementById('filtro-tarefa-conta').onchange = e => {
+    uiTarefas.contaId = e.target.value;
+    renderListaTarefas();
+  };
+  document.getElementById('toggle-arquivadas').onchange = e => {
+    uiTarefas.mostrarArquivadas = e.target.checked;
+    renderListaTarefas();
+  };
+}
+
+function renderListaTarefas() {
   const container = document.getElementById('week-tasks');
   if (!container) return;
 
-  // Filtrar tarefas por conta e por papel
-  const _esAdmin = window.USUARIO?.papel === 'admin';
-  const _semRestricaoT = _esAdmin || !window.USUARIO?.contasPermitidas?.length;
-  const _idsVisiveisT = _semRestricaoT ? null : contasVisiveis().map(c => c.id);
-  const tarefasFiltradas = _esAdmin
-    ? db.tarefas
-    : db.tarefas.filter(t =>
-        t.contaid !== '__admin__' &&
-        (!t.contaid || _idsVisiveisT === null || _idsVisiveisT.includes(t.contaid))
-      );
+  const atual = semanaAtual();
+  const semExib = semanaExibida();
+  const isAtual = semExib === atual;
 
-  // Agrupar tarefas por domínio
+  // Permissões
+  const _esAdmin = window.USUARIO?.papel === 'admin';
+  const _idsVisiveis = (_esAdmin || !window.USUARIO?.contasPermitidas?.length)
+    ? null : contasVisiveis().map(c => c.id);
+
+  function visivel(t) {
+    if (t.contaid === '__admin__') return _esAdmin;
+    if (!_esAdmin && _idsVisiveis && t.contaid && !_idsVisiveis.includes(t.contaid)) return false;
+    return true;
+  }
+
+  // Selecionar tarefas a exibir
+  let tarefas = db.tarefas.filter(t => {
+    if (!visivel(t)) return false;
+    const sem = t.semana || atual;
+
+    if (isAtual) {
+      if (sem === atual) return !t.arquivada || uiTarefas.mostrarArquivadas;
+      if (sem < atual)  return !t.arquivada || uiTarefas.mostrarArquivadas; // atrasadas
+      return false;
+    } else {
+      if (sem !== semExib) return false;
+      if (t.arquivada && !uiTarefas.mostrarArquivadas) return false;
+      return true;
+    }
+  });
+
+  // Filtro de domínio
+  if (uiTarefas.dominio !== 'TODOS') {
+    tarefas = tarefas.filter(t => (t.dominio || 'OUTRO').toUpperCase() === uiTarefas.dominio);
+  }
+
+  // Filtro de conta
+  if (uiTarefas.contaId) {
+    tarefas = tarefas.filter(t => t.contaid === uiTarefas.contaId);
+  }
+
+  // Agrupar por domínio
   const grupos = {};
   DOMINIOS.forEach(d => { grupos[d] = []; });
-  tarefasFiltradas.forEach(t => {
-    const dom = t.dominio.toUpperCase();
+  tarefas.forEach(t => {
+    const dom = (t.dominio || 'OUTRO').toUpperCase();
     if (!grupos[dom]) grupos[dom] = [];
     grupos[dom].push(t);
   });
 
   container.innerHTML = DOMINIOS.map(dom => {
-    const tarefas = grupos[dom] || [];
+    const lista = grupos[dom] || [];
     const domClass = 'domain-' + dom.toLowerCase().replace(/[^a-z]/g, '');
-    const itens = tarefas.length
-      ? tarefas.map(t => `
-          <article class="task-card ${t.concluida ? 'is-concluida' : ''}" data-id="${esc(t.id)}">
-            <input class="task-check" type="checkbox" ${t.concluida ? 'checked' : ''}
-              aria-label="${esc(t.titulo)}" data-action="toggle-tarefa" data-id="${esc(t.id)}">
-            <div class="task-content">
-              <h4 class="task-title">${esc(t.titulo)}</h4>
-              <div class="task-badges">
-                <span class="badge ${domClass}">${esc(t.dominio)}</span>
-                ${t.contaid === '__admin__'
-                  ? `<span class="badge status-travado">Admin</span>`
-                  : t.contaid
-                    ? (() => { const _c = getConta(t.contaid); return _c ? `<span class="badge" style="background:${esc(_c.cor)}22;border-color:${esc(_c.cor)}55;color:${esc(_c.cor)}">${esc(_c.nome)}</span>` : ''; })()
-                    : ''}
+
+    const itens = lista.length
+      ? lista.map(t => {
+          const sem = t.semana || atual;
+          const isAtrasada = sem < atual && !t.concluida && !t.arquivada;
+          const conta = t.contaid && t.contaid !== '__admin__' ? getConta(t.contaid) : null;
+          return `
+            <article class="task-card ${t.concluida ? 'is-concluida' : ''} ${isAtrasada ? 'is-atrasada' : ''} ${t.arquivada ? 'is-arquivada' : ''}" data-id="${esc(t.id)}">
+              <input class="task-check" type="checkbox" ${t.concluida ? 'checked' : ''}
+                aria-label="${esc(t.titulo)}" data-action="toggle-tarefa" data-id="${esc(t.id)}">
+              <div class="task-content">
+                <h4 class="task-title">${esc(t.titulo)}</h4>
+                <div class="task-badges">
+                  <span class="badge ${domClass}">${esc(t.dominio || 'OUTRO')}</span>
+                  ${isAtrasada ? `<span class="badge" style="background:#ef444422;border-color:#ef444466;color:#ef4444">ATRASADA</span>` : ''}
+                  ${t.arquivada ? `<span class="badge" style="background:#6b6b7a22;border-color:#6b6b7a55;color:#6b6b7a">ARQUIVADA</span>` : ''}
+                  ${t.contaid === '__admin__'
+                    ? `<span class="badge status-travado">Admin</span>`
+                    : conta ? `<span class="badge" style="background:${esc(conta.cor)}22;border-color:${esc(conta.cor)}55;color:${esc(conta.cor)}">${esc(conta.nome)}</span>` : ''}
+                </div>
               </div>
-            </div>
-            ${podeEditar() ? `
-              <button class="icon-button" type="button" aria-label="Editar tarefa" data-action="editar-tarefa" data-id="${esc(t.id)}" style="opacity:0.6;font-size:0.9rem">✎</button>
-              <button class="icon-button" type="button" aria-label="Excluir tarefa" data-action="excluir-tarefa" data-id="${esc(t.id)}">×</button>
-            ` : ''}
-          </article>
-        `).join('')
+              ${podeEditar() ? `
+                <button class="icon-button" type="button" aria-label="Editar tarefa" data-action="editar-tarefa" data-id="${esc(t.id)}" style="opacity:0.6;font-size:0.9rem">✎</button>
+                <button class="icon-button" type="button" aria-label="Excluir tarefa" data-action="excluir-tarefa" data-id="${esc(t.id)}">×</button>
+              ` : ''}
+            </article>
+          `;
+        }).join('')
       : '<p class="muted">Sem tarefas neste domínio.</p>';
 
     return `
@@ -2031,16 +2214,19 @@ function renderSemana() {
     `;
   }).join('');
 
-  // Eventos (onclick/onchange substituem anteriores)
   container.onclick  = onClickSemana;
   container.onchange = onChangeSemana;
 
-  // Botões de cabeçalho (section-head para não pegar botões dos cards)
-  const btnNova    = document.querySelector('#tab-semana .section-head .btn-primary');
-  const btnNovaSeq = document.querySelector('#tab-semana .section-head .btn:not(.btn-primary)');
+  // Botão "Nova tarefa"
+  const btnNova = document.querySelector('#tab-semana .section-head .btn-primary');
+  if (btnNova) {
+    btnNova.style.display = podeEditar() ? '' : 'none';
+    if (podeEditar()) btnNova.onclick = () => abrirModalTarefa(null);
+  }
 
-  if (btnNova)    { btnNova.style.display    = podeEditar() ? '' : 'none'; if (podeEditar()) btnNova.onclick    = () => abrirModalTarefa(null); }
-  if (btnNovaSeq) { btnNovaSeq.style.display = podeEditar() ? '' : 'none'; if (podeEditar()) btnNovaSeq.onclick = () => novaSemana(); }
+  // Botão "Ver arquivadas"
+  const btnArq = document.getElementById('btn-ver-arquivadas');
+  if (btnArq) btnArq.onclick = () => abrirModalArquivadas();
 
   atualizarBadgeTarefas();
 }
@@ -2062,11 +2248,17 @@ function toggleTarefa(id) {
   const t = db.tarefas.find(t => t.id === id);
   if (!t) return;
   t.concluida = !t.concluida;
+
+  // Auto-arquivar ao concluir tarefas de semanas passadas
+  const atual = semanaAtual();
+  if (t.concluida && t.semana && t.semana < atual) t.arquivada = true;
+
   salvarDados(db);
-  renderSemana();
+  renderListaTarefas();
   atualizarBadgeTarefas();
   if (window._sb) {
-    _sbEscritaTarefas(() => window._sb.schema('public').from('tarefas').update({ concluida: t.concluida }).eq('id', id))
+    const campos = { concluida: t.concluida, arquivada: t.arquivada ?? false };
+    _sbEscritaTarefas(() => window._sb.schema('public').from('tarefas').update(campos).eq('id', id))
       .then(({ error }) => { if (error) console.warn('[Tarefas] Erro ao salvar toggle:', error.message); });
   }
 }
@@ -2075,24 +2267,10 @@ function excluirTarefa(id) {
   if (!confirm('Excluir esta tarefa?')) return;
   db.tarefas = db.tarefas.filter(t => t.id !== id);
   salvarDados(db);
-  renderSemana();
+  renderListaTarefas();
   if (window._sb) {
     _sbEscritaTarefas(() => window._sb.schema('public').from('tarefas').delete().eq('id', id))
       .then(({ error }) => { if (error) console.warn('[Tarefas] Erro ao excluir tarefa:', error.message); });
-  }
-}
-
-function novaSemana() {
-  const concluidas = db.tarefas.filter(t => t.concluida).length;
-  if (concluidas === 0) { alert('Nenhuma tarefa concluída para remover.'); return; }
-  if (!confirm(`Remover ${concluidas} tarefa(s) concluída(s) e iniciar nova semana?`)) return;
-  const idsRemover = db.tarefas.filter(t => t.concluida).map(t => t.id);
-  db.tarefas = db.tarefas.filter(t => !t.concluida);
-  salvarDados(db);
-  renderSemana();
-  if (window._sb && idsRemover.length > 0) {
-    _sbEscritaTarefas(() => window._sb.schema('public').from('tarefas').delete().in('id', idsRemover))
-      .then(({ error }) => { if (error) console.warn('[Tarefas] Erro ao limpar semana:', error.message); });
   }
 }
 
@@ -2142,6 +2320,8 @@ function abrirModalTarefa(id) {
         dominio: dados.dominio,
         contaid: dados.contaid || '',
         concluida: false,
+        semana: semanaAtual(),
+        arquivada: false,
       };
       if (window._sb) {
         const { error } = await _sbEscritaTarefas(() => window._sb.schema('public').from('tarefas').insert(novaTarefa));
@@ -2164,6 +2344,48 @@ function abrirModalTarefa(id) {
       renderSemana();
     },
   });
+}
+
+function abrirModalArquivadas() {
+  const arquivadas = db.tarefas.filter(t => t.arquivada);
+  if (arquivadas.length === 0) { alert('Nenhuma tarefa arquivada ainda.'); return; }
+
+  // Agrupar por semana (mais recente primeiro)
+  const porSemana = {};
+  arquivadas.forEach(t => {
+    const sem = t.semana || 'sem-semana';
+    if (!porSemana[sem]) porSemana[sem] = [];
+    porSemana[sem].push(t);
+  });
+
+  const corpo = Object.keys(porSemana).sort().reverse().map(sem => {
+    const label = sem === 'sem-semana' ? 'Sem semana definida' : `Semana de ${formatarRangeSemana(sem)}`;
+    const itens = porSemana[sem].map(t => {
+      const conta = t.contaid && t.contaid !== '__admin__' ? getConta(t.contaid) : null;
+      const domClass = 'domain-' + (t.dominio || 'OUTRO').toLowerCase().replace(/[^a-z]/g, '');
+      return `
+        <div style="display:flex;align-items:flex-start;gap:8px;padding:8px 0;border-bottom:1px solid #2a2a3033">
+          <span style="opacity:0.4;font-size:0.9rem;margin-top:2px">✓</span>
+          <div style="flex:1">
+            <div style="font-size:0.88rem;color:#9999aa;text-decoration:line-through">${esc(t.titulo)}</div>
+            <div style="display:flex;gap:5px;margin-top:4px;flex-wrap:wrap">
+              <span class="badge ${domClass}" style="font-size:0.65rem">${esc(t.dominio || 'OUTRO')}</span>
+              ${conta ? `<span class="badge" style="font-size:0.65rem;background:${esc(conta.cor)}22;border-color:${esc(conta.cor)}55;color:${esc(conta.cor)}">${esc(conta.nome)}</span>` : ''}
+            </div>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    return `
+      <div style="margin-bottom:16px">
+        <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#6b6b7a;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid #2a2a30">${esc(label)}</div>
+        ${itens}
+      </div>
+    `;
+  }).join('');
+
+  abrirModal('Tarefas Arquivadas', corpo, () => fecharModal(), { labelSalvar: 'Fechar' });
 }
 
 // ─────────────────────────────────────────────

@@ -158,7 +158,7 @@
     <nav class="tabs" aria-label="Navegação principal">
       <button class="tab active" type="button" data-target="tab-controle">Controle</button>
       <button class="tab" type="button" data-target="tab-conteudo">Conteúdo</button>
-      <button class="tab" type="button" data-target="tab-semana">Semana</button>
+      <button class="tab" type="button" data-target="tab-semana">Tarefas</button>
       <button class="tab" type="button" data-target="tab-equipe">Equipe</button>
       <button class="tab" type="button" data-target="tab-eventos">Eventos</button>
       <button class="tab" type="button" data-target="tab-usuarios" id="tab-btn-usuarios" style="display:none">Usuários</button>
@@ -508,18 +508,20 @@
       </div>
     </section>
 
-    <!-- Aba 3: Esta Semana -->
+    <!-- Aba 3: Tarefas -->
     <section id="tab-semana" class="view" aria-labelledby="semana-title">
       <div class="section-head">
         <div>
-          <h2 id="semana-title" class="section-title">Esta Semana</h2>
-          <p class="section-copy">Tarefas separadas por domínio operacional.</p>
+          <h2 id="semana-title" class="section-title">Tarefas</h2>
+          <p class="section-copy">Tarefas operacionais por semana e domínio.</p>
         </div>
         <div class="actions">
+          <button class="btn" type="button" id="btn-ver-arquivadas">Ver arquivadas</button>
           <button class="btn btn-primary" type="button">Nova tarefa</button>
-          <button class="btn" type="button">Nova semana</button>
         </div>
       </div>
+
+      <div id="tarefas-filtros"></div>
 
       <div id="week-tasks" class="task-list">
         <section class="week-domain" aria-labelledby="domain-reuniao">
